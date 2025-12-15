@@ -12,6 +12,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { LlmModelType } from '@/constants/knowledge';
+import { t } from 'i18next';
 import { Funnel } from 'lucide-react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -21,15 +22,15 @@ import { Button } from './ui/button';
 
 const ModelTypes = [
   {
-    title: 'All Models',
+    title: t('flow.allModels'),
     value: 'all',
   },
   {
-    title: 'Text-only Models',
+    title: t('flow.textOnlyModels'),
     value: LlmModelType.Chat,
   },
   {
-    title: 'Multimodal Models',
+    title: t('flow.multimodalModels'),
     value: LlmModelType.Image2text,
   },
 ];
@@ -38,9 +39,12 @@ export const LargeModelFilterFormSchema = {
   llm_filter: z.string().optional(),
 };
 
-type LargeModelFormFieldProps = Pick<NextInnerLLMSelectProps, 'showTTSModel'>;
+type LargeModelFormFieldProps = Pick<
+  NextInnerLLMSelectProps,
+  'showSpeech2TextModel'
+>;
 export function LargeModelFormField({
-  showTTSModel,
+  showSpeech2TextModel: showTTSModel,
 }: LargeModelFormFieldProps) {
   const form = useFormContext();
   const { t } = useTranslation();
@@ -66,7 +70,7 @@ export function LargeModelFormField({
                       <DropdownMenu>
                         <DropdownMenuTrigger>
                           <Button variant={'ghost'}>
-                            <Funnel />
+                            <Funnel className="text-text-disabled" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
@@ -91,7 +95,7 @@ export function LargeModelFormField({
                 <NextLLMSelect
                   {...field}
                   filter={filter}
-                  showTTSModel={showTTSModel}
+                  showSpeech2TextModel={showTTSModel}
                 />
               </FormControl>
             </section>

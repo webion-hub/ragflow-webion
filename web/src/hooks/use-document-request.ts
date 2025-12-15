@@ -1,19 +1,27 @@
 import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
+import { post } from '@/utils/next-request';
+
+import message from '@/components/ui/message';
+import { ResponseType } from '@/interfaces/database/base';
+import { IReferenceChunk } from '@/interfaces/database/chat';
 import {
   IDocumentInfo,
   IDocumentInfoFilter,
 } from '@/interfaces/database/document';
+import { IChunk } from '@/interfaces/database/knowledge';
 import {
   IChangeParserConfigRequestBody,
   IDocumentMetaRequestBody,
 } from '@/interfaces/request/document';
 import i18n from '@/locales/config';
 import kbService, { listDocument } from '@/services/knowledge-service';
+import api, { api_host } from '@/utils/api';
+import { buildChunkHighlights } from '@/utils/document-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
-import { message } from 'antd';
 import { get } from 'lodash';
 import { useCallback, useMemo, useState } from 'react';
+import { IHighlight } from 'react-pdf-highlighter';
 import { useParams } from 'umi';
 import {
   useGetPaginationWithRouter,
@@ -35,6 +43,9 @@ export const enum DocumentApiAction {
   SetDocumentMeta = 'setDocumentMeta',
   FetchDocumentFilter = 'fetchDocumentFilter',
   CreateDocument = 'createDocument',
+  WebCrawl = 'webCrawl',
+  FetchDocumentThumbnails = 'fetchDocumentThumbnails',
+  ParseDocument = 'parseDocument',
 }
 
 export const useUploadNextDocument = () => {
@@ -45,9 +56,9 @@ export const useUploadNextDocument = () => {
     data,
     isPending: loading,
     mutateAsync,
-  } = useMutation({
+  } = useMutation<ResponseType<IDocumentInfo[]>, Error, File[]>({
     mutationKey: [DocumentApiAction.UploadDocument],
-    mutationFn: async (fileList: File[]) => {
+    mutationFn: async (fileList) => {
       const formData = new FormData();
       formData.append('kb_id', id!);
       fileList.forEach((file: any) => {
@@ -334,15 +345,18 @@ export const useSetDocumentParser = () => {
     mutationKey: [DocumentApiAction.SetDocumentParser],
     mutationFn: async ({
       parserId,
+      pipelineId,
       documentId,
       parserConfig,
     }: {
       parserId: string;
+      pipelineId: string;
       documentId: string;
       parserConfig: IChangeParserConfigRequestBody;
     }) => {
       const { data } = await kbService.document_change_parser({
         parser_id: parserId,
+        pipeline_id: pipelineId,
         doc_id: documentId,
         parser_config: parserConfig,
       });
@@ -425,4 +439,109 @@ export const useCreateDocument = () => {
   });
 
   return { createDocument: mutateAsync, loading, data };
+};
+
+export const useGetDocumentUrl = (documentId?: string) => {
+  const getDocumentUrl = useCallback(
+    (id?: string) => {
+      return `${api_host}/document/get/${documentId || id}`;
+    },
+    [documentId],
+  );
+
+  return getDocumentUrl;
+};
+
+export const useGetChunkHighlights = (
+  selectedChunk: IChunk | IReferenceChunk,
+) => {
+  const [size, setSize] = useState({ width: 849, height: 1200 });
+
+  const highlights: IHighlight[] = useMemo(() => {
+    return buildChunkHighlights(selectedChunk, size);
+  }, [selectedChunk, size]);
+
+  const setWidthAndHeight = (width: number, height: number) => {
+    setSize((pre) => {
+      if (pre.height !== height || pre.width !== width) {
+        return { height, width };
+      }
+      return pre;
+    });
+  };
+
+  return { highlights, setWidthAndHeight };
+};
+
+export const useNextWebCrawl = () => {
+  const { knowledgeId } = useGetKnowledgeSearchParams();
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [DocumentApiAction.WebCrawl],
+    mutationFn: async ({ name, url }: { name: string; url: string }) => {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('url', url);
+      formData.append('kb_id', knowledgeId);
+
+      const ret = await kbService.web_crawl(formData);
+      const code = get(ret, 'data.code');
+      if (code === 0) {
+        message.success(i18n.t('message.uploaded'));
+      }
+
+      return code;
+    },
+  });
+
+  return {
+    data,
+    loading,
+    webCrawl: mutateAsync,
+  };
+};
+
+export const useFetchDocumentThumbnailsByIds = () => {
+  const [ids, setDocumentIds] = useState<string[]>([]);
+  const { data } = useQuery<Record<string, string>>({
+    queryKey: [DocumentApiAction.FetchDocumentThumbnails, ids],
+    enabled: ids.length > 0,
+    initialData: {},
+    queryFn: async () => {
+      const { data } = await kbService.document_thumbnails({ doc_ids: ids });
+      if (data.code === 0) {
+        return data.data;
+      }
+      return {};
+    },
+  });
+
+  return { data, setDocumentIds };
+};
+
+export const useParseDocument = () => {
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [DocumentApiAction.ParseDocument],
+    mutationFn: async (url: string) => {
+      try {
+        const { data } = await post(api.parse, { url });
+        if (data?.code === 0) {
+          message.success(i18n.t('message.uploaded'));
+        }
+        return data;
+      } catch (error) {
+        message.error('error');
+      }
+    },
+  });
+
+  return { parseDocument: mutateAsync, data, loading };
 };

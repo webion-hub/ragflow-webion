@@ -14,6 +14,8 @@ import {
 import * as React from 'react';
 
 import { ChunkMethodDialog } from '@/components/chunk-method-dialog';
+import { EmptyType } from '@/components/empty/constant';
+import Empty from '@/components/empty/empty';
 import { RenameDialog } from '@/components/rename-dialog';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
@@ -27,8 +29,11 @@ import {
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchDocumentList } from '@/hooks/use-document-request';
 import { getExtension } from '@/utils/document-util';
+import { t } from 'i18next';
 import { pick } from 'lodash';
 import { useMemo } from 'react';
+import ProcessLogModal from '../process-log-modal';
+import { useShowLog } from './hooks';
 import { SetMetaDialog } from './set-meta-dialog';
 import { useChangeDocumentParser } from './use-change-document-parser';
 import { useDatasetTableColumns } from './use-dataset-table-columns';
@@ -81,11 +86,13 @@ export function DatasetTable({
     onSetMetaModalOk,
     metaRecord,
   } = useSaveMeta();
+  const { showLog, logInfo, logVisible, hideLog } = useShowLog(documents);
 
   const columns = useDatasetTableColumns({
     showChangeParserModal,
     showRenameModal,
     showSetMetaModal,
+    showLog,
   });
 
   const currentPagination = useMemo(() => {
@@ -119,7 +126,7 @@ export function DatasetTable({
 
   return (
     <div className="w-full">
-      <Table rootClassName="max-h-[82vh]">
+      <Table rootClassName="max-h-[calc(100vh-222px)]">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
@@ -144,6 +151,7 @@ export function DatasetTable({
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() && 'selected'}
+                className="group"
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
@@ -158,13 +166,13 @@ export function DatasetTable({
           ) : (
             <TableRow>
               <TableCell colSpan={columns.length} className="h-24 text-center">
-                No results.
+                <Empty type={EmptyType.Data} />
               </TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
-      <div className="flex items-center justify-end  py-4">
+      <div className="flex items-center justify-end  py-4 absolute bottom-3 right-3">
         <div className="space-x-2">
           <RAGFlowPagination
             {...pick(pagination, 'current', 'pageSize')}
@@ -179,6 +187,7 @@ export function DatasetTable({
         <ChunkMethodDialog
           documentId={changeParserRecord.id}
           parserId={changeParserRecord.parser_id}
+          pipelineId={changeParserRecord.pipeline_id}
           parserConfig={changeParserRecord.parser_config}
           documentExtension={getExtension(changeParserRecord.name)}
           onOk={onChangeParserOk}
@@ -205,6 +214,14 @@ export function DatasetTable({
           onOk={onSetMetaModalOk}
           initialMetaData={metaRecord.meta_fields}
         ></SetMetaDialog>
+      )}
+      {logVisible && (
+        <ProcessLogModal
+          title={t('knowledgeDetails.fileLogs')}
+          visible={logVisible}
+          onCancel={() => hideLog()}
+          logInfo={logInfo}
+        />
       )}
     </div>
   );

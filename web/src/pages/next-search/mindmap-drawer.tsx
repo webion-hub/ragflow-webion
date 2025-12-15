@@ -3,13 +3,13 @@ import { Progress } from '@/components/ui/progress';
 import { IModalProps } from '@/interfaces/common';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { usePendingMindMap } from '../search/hooks';
+import { usePendingMindMap } from './hooks';
 
 interface IProps extends IModalProps<any> {
   data: any;
 }
 
-const MindMapDrawer = ({ data, hideModal, visible, loading }: IProps) => {
+const MindMapDrawer = ({ data, hideModal, loading }: IProps) => {
   const { t } = useTranslation();
   const percent = usePendingMindMap();
   return (
@@ -27,7 +27,7 @@ const MindMapDrawer = ({ data, hideModal, visible, loading }: IProps) => {
         />
       </div>
       {loading && (
-        <div className="absolute top-48">
+        <div className=" rounded-lg p-4 w-full h-full">
           <Progress value={percent} className="h-1 flex-1 min-w-10" />
         </div>
       )}

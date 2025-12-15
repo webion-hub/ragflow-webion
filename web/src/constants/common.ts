@@ -43,6 +43,7 @@ export const LanguageList = [
   'English',
   'Chinese',
   'Traditional Chinese',
+  'Russian',
   'Indonesia',
   'Spanish',
   'Vietnamese',
@@ -50,11 +51,13 @@ export const LanguageList = [
   'Portuguese BR',
   'German',
   'French',
+  'Italian',
 ];
 export const LanguageMap = {
   English: 'English',
   Chinese: '简体中文',
   'Traditional Chinese': '繁體中文',
+  Russian: 'Русский',
   Indonesia: 'Indonesia',
   Spanish: 'Español',
   Vietnamese: 'Tiếng việt',
@@ -62,12 +65,14 @@ export const LanguageMap = {
   'Portuguese BR': 'Português BR',
   German: 'German',
   French: 'Français',
+  Italian: 'Italiano',
 };
 
 export enum LanguageAbbreviation {
   En = 'en',
   Zh = 'zh',
   ZhTraditional = 'zh-TRADITIONAL',
+  Ru = 'ru',
   Id = 'id',
   Ja = 'ja',
   Es = 'es',
@@ -75,12 +80,14 @@ export enum LanguageAbbreviation {
   PtBr = 'pt-BR',
   De = 'de',
   Fr = 'fr',
+  It = 'it',
 }
 
 export const LanguageAbbreviationMap = {
   [LanguageAbbreviation.En]: 'English',
   [LanguageAbbreviation.Zh]: '简体中文',
   [LanguageAbbreviation.ZhTraditional]: '繁體中文',
+  [LanguageAbbreviation.Ru]: 'Русский',
   [LanguageAbbreviation.Id]: 'Indonesia',
   [LanguageAbbreviation.Es]: 'Español',
   [LanguageAbbreviation.Vi]: 'Tiếng việt',
@@ -88,12 +95,14 @@ export const LanguageAbbreviationMap = {
   [LanguageAbbreviation.PtBr]: 'Português BR',
   [LanguageAbbreviation.De]: 'Deutsch',
   [LanguageAbbreviation.Fr]: 'Français',
+  [LanguageAbbreviation.It]: 'Italiano',
 };
 
 export const LanguageTranslationMap = {
   English: 'en',
   Chinese: 'zh',
   'Traditional Chinese': 'zh-TRADITIONAL',
+  Russian: 'ru',
   Indonesia: 'id',
   Spanish: 'es',
   Vietnamese: 'vi',
@@ -101,6 +110,7 @@ export const LanguageTranslationMap = {
   'Portuguese BR': 'pt-br',
   German: 'de',
   French: 'fr',
+  Italian: 'it',
 };
 
 export enum FileMimeType {
@@ -143,7 +153,7 @@ export const Images = [
 ];
 
 // Without FileViewer
-export const ExceptiveType = ['xlsx', 'xls', 'pdf', 'docx', ...Images];
+export const ExceptiveType = ['xlsx', 'xls', 'pdf', 'docx', 'md', ...Images];
 
 export const SupportedPreviewDocumentTypes = [...ExceptiveType];
 //#endregion

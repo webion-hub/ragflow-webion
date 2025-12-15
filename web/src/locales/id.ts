@@ -512,6 +512,14 @@ export default {
       baseUrl: 'Base-Url',
       baseUrlTip:
         'Jika kunci API Anda berasal dari OpenAI, abaikan saja. Penyedia perantara lainnya akan memberikan base url ini dengan kunci API.',
+      tongyiBaseUrlTip:
+        'Untuk pengguna Tiongkok, tidak perlu diisi atau gunakan https://dashscope.aliyuncs.com/compatible-mode/v1. Untuk pengguna internasional, gunakan https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+      tongyiBaseUrlPlaceholder:
+        '(Hanya untuk pengguna internasional, silakan lihat tip)',
+      minimaxBaseUrlTip:
+        'Hanya untuk pengguna internasional: gunakan https://api.minimax.io/v1.',
+      minimaxBaseUrlPlaceholder:
+        '(Hanya untuk pengguna internasional, isi https://api.minimax.io/v1)',
       modify: 'Ubah',
       systemModelSettings: 'Tetapkan model default',
       chatModel: 'Model Obrolan',
@@ -759,6 +767,30 @@ export default {
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription:
         'Komponen yang mengambil hasil pencarian dari duckduckgo.com, dengan TopN menentukan jumlah hasil pencarian. Ini melengkapi basis pengetahuan yang ada.',
+      searXNG: 'SearXNG',
+      searXNGDescription:
+        'Komponen yang melakukan pencarian menggunakan URL instance SearXNG yang Anda berikan. Spesifikasikan TopN dan URL instance.',
+      pdfGenerator: 'Pembuat Dokumen',
+      pDFGenerator: 'Pembuat Dokumen',
+      pdfGeneratorDescription: `Komponen yang menghasilkan dokumen (PDF, DOCX, TXT) dari konten berformat markdown dengan gaya yang dapat disesuaikan, gambar, dan tabel. Mendukung: **tebal**, *miring*, # judul, - daftar, tabel dengan sintaks |.`,
+      pDFGeneratorDescription: `Komponen yang menghasilkan dokumen (PDF, DOCX, TXT) dari konten berformat markdown dengan gaya yang dapat disesuaikan, gambar, dan tabel. Mendukung: **tebal**, *miring*, # judul, - daftar, tabel dengan sintaks |.`,
+      subtitle: 'Subjudul',
+      logoImage: 'Gambar Logo',
+      logoPosition: 'Posisi Logo',
+      logoWidth: 'Lebar Logo',
+      logoHeight: 'Tinggi Logo',
+      fontFamily: 'Keluarga Font',
+      fontSize: 'Ukuran Font',
+      titleFontSize: 'Ukuran Font Judul',
+      pageSize: 'Ukuran Halaman',
+      orientation: 'Orientasi',
+      marginTop: 'Margin Atas',
+      marginBottom: 'Margin Bawah',
+      filename: 'Nama File',
+      outputDirectory: 'Direktori Output',
+      addPageNumbers: 'Tambahkan Nomor Halaman',
+      addTimestamp: 'Tambahkan Timestamp',
+      watermarkText: 'Teks Watermark',
       channel: 'Saluran',
       channelTip: `Lakukan pencarian teks atau pencarian berita pada input komponen`,
       text: 'Teks',
@@ -1044,6 +1076,20 @@ export default {
       note: 'Catatan',
       noteDescription: 'Catatan',
       notePlaceholder: 'Silakan masukkan catatan',
+
+      invoke: 'Permintaan HTTP',
+      invokeDescription:
+        'Komponen yang mampu memanggil layanan remote, menggunakan output komponen lain atau konstanta sebagai input.',
+      url: 'Url',
+      method: 'Metode',
+      timeout: 'Waktu habis',
+      headers: 'Header',
+      cleanHtml: 'Bersihkan HTML',
+      cleanHtmlTip:
+        'Jika respons diformat HTML dan hanya ingin konten utama, aktifkan opsi ini.',
+      invalidUrl:
+        'Harus berupa URL yang valid atau URL dengan placeholder variabel dalam format {nama_variabel} atau {komponen@variabel}',
+
       prompt: 'Prompt',
       promptTip:
         'Gunakan prompt sistem untuk menjelaskan tugas untuk LLM, tentukan bagaimana harus merespons, dan menguraikan persyaratan lainnya. Prompt sistem sering digunakan bersama dengan kunci (variabel), yang berfungsi sebagai berbagai input data untuk LLM. Gunakan garis miring `/` atau tombol (x) untuk menampilkan kunci yang digunakan.',

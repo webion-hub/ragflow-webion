@@ -3,8 +3,8 @@ import logging
 import pymysql
 from urllib.parse import quote_plus
 
-from api.utils import get_base_config
-from rag.utils import singleton
+from common.config_utils import get_base_config
+from common.decorator import singleton
 
 
 CREATE_TABLE_SQL = """
@@ -41,7 +41,9 @@ def get_opendal_config():
             scheme = opendal_config.get("scheme")
             config_data = opendal_config.get("config", {})
             kwargs = {"scheme": scheme, **config_data}
-        logging.info("Loaded OpenDAL configuration from yaml: %s", kwargs)
+        safe_log_keys=['scheme', 'host', 'port', 'database', 'table']
+        loggable_kwargs = {k: v for k, v in kwargs.items() if k in safe_log_keys}
+        logging.info("Loaded OpenDAL configuration(non sensitive): %s", loggable_kwargs)
         return kwargs
     except Exception as e:
         logging.error("Failed to load OpenDAL configuration from yaml: %s", str(e))
@@ -62,23 +64,22 @@ class OpenDALStorage:
 
     def health(self):
         bucket, fnm, binary = "txtxtxtxt1", "txtxtxtxt1", b"_t@@@1"
-        r = self._operator.write(f"{bucket}/{fnm}", binary)
-        return r
+        return self._operator.write(f"{bucket}/{fnm}", binary)
 
-    def put(self, bucket, fnm, binary):
+    def put(self, bucket, fnm, binary, tenant_id=None):
         self._operator.write(f"{bucket}/{fnm}", binary)
 
-    def get(self, bucket, fnm):
+    def get(self, bucket, fnm, tenant_id=None):
         return self._operator.read(f"{bucket}/{fnm}")
 
-    def rm(self, bucket, fnm):
+    def rm(self, bucket, fnm, tenant_id=None):
         self._operator.delete(f"{bucket}/{fnm}")
         self._operator.__init__()
 
-    def scan(self, bucket, fnm):
+    def scan(self, bucket, fnm, tenant_id=None):
         return self._operator.scan(f"{bucket}/{fnm}")
 
-    def obj_exist(self, bucket, fnm):
+    def obj_exist(self, bucket, fnm, tenant_id=None):
         return self._operator.exists(f"{bucket}/{fnm}")
 
 

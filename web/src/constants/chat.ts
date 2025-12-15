@@ -32,3 +32,10 @@ export enum ChatSearchParams {
 }
 
 export const EmptyConversationId = 'empty';
+
+export enum DatasetMetadata {
+  Disabled = 'disabled',
+  Automatic = 'auto',
+  SemiAutomatic = 'semi_auto',
+  Manual = 'manual',
+}

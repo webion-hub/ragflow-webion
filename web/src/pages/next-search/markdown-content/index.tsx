@@ -4,7 +4,7 @@ import { IReference, IReferenceChunk } from '@/interfaces/database/chat';
 import { getExtension } from '@/utils/document-util';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import DOMPurify from 'dompurify';
-import { useCallback, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import Markdown from 'react-markdown';
 import reactStringReplace from 'react-string-replace';
 import SyntaxHighlighter from 'react-syntax-highlighter';
@@ -14,13 +14,14 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { visitParents } from 'unist-util-visit-parents';
 
-import { useFetchDocumentThumbnailsByIds } from '@/hooks/document-hooks';
 import { useTranslation } from 'react-i18next';
 
 import 'katex/dist/katex.min.css'; // `rehype-katex` does not import the CSS for you
 
 import {
+  currentReg,
   preprocessLaTeX,
+  replaceTextByOldReg,
   replaceThinkToSection,
   showImage,
 } from '@/utils/chat';
@@ -31,7 +32,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { currentReg, replaceTextByOldReg } from '@/pages/next-chats/utils';
+import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
 import classNames from 'classnames';
 import { omit } from 'lodash';
 import { pipe } from 'lodash/fp';
@@ -64,8 +65,11 @@ const MarkdownContent = ({
   const { setDocumentIds, data: fileThumbnails } =
     useFetchDocumentThumbnailsByIds();
   const contentWithCursor = useMemo(() => {
-    // let text = DOMPurify.sanitize(content);
-    let text = content;
+    let text = DOMPurify.sanitize(content, {
+      ADD_TAGS: ['think', 'section'],
+      ADD_ATTR: ['class'],
+    });
+    // let text = content;
     if (text === '') {
       text = t('chat.searching');
     }
@@ -82,18 +86,18 @@ const MarkdownContent = ({
     (
       documentId: string,
       chunk: IReferenceChunk,
-      isPdf: boolean,
-      documentUrl?: string,
+      // isPdf: boolean,
+      // documentUrl?: string,
     ) =>
       () => {
-        if (!isPdf) {
-          if (!documentUrl) {
-            return;
-          }
-          window.open(documentUrl, '_blank');
-        } else {
-          clickDocumentButton?.(documentId, chunk);
-        }
+        // if (!isPdf) {
+        //   if (!documentUrl) {
+        //     return;
+        //   }
+        //   window.open(documentUrl, '_blank');
+        // } else {
+        clickDocumentButton?.(documentId, chunk);
+        // }
       },
     [clickDocumentButton],
   );
@@ -144,7 +148,6 @@ const MarkdownContent = ({
   const getPopoverContent = useCallback(
     (chunkIndex: number) => {
       const {
-        documentUrl,
         fileThumbnail,
         fileExtension,
         imageId,
@@ -198,8 +201,8 @@ const MarkdownContent = ({
                   onClick={handleDocumentButtonClick(
                     documentId,
                     chunkItem,
-                    fileExtension === 'pdf',
-                    documentUrl,
+                    // fileExtension === 'pdf',
+                    // documentUrl,
                   )}
                 >
                   {document?.doc_name}
@@ -218,8 +221,7 @@ const MarkdownContent = ({
       let replacedText = reactStringReplace(text, currentReg, (match, i) => {
         const chunkIndex = getChunkIndex(match);
 
-        const { documentUrl, fileExtension, imageId, chunkItem, documentId } =
-          getReferenceInfo(chunkIndex);
+        const { imageId, chunkItem, documentId } = getReferenceInfo(chunkIndex);
 
         const docType = chunkItem?.doc_type;
 
@@ -232,8 +234,8 @@ const MarkdownContent = ({
                 ? handleDocumentButtonClick(
                     documentId,
                     chunkItem,
-                    fileExtension === 'pdf',
-                    documentUrl,
+                    // fileExtension === 'pdf',
+                    // documentUrl,
                   )
                 : () => {}
             }
@@ -243,7 +245,9 @@ const MarkdownContent = ({
             <PopoverTrigger>
               <InfoCircleOutlined className={styles.referenceIcon} />
             </PopoverTrigger>
-            <PopoverContent>{getPopoverContent(chunkIndex)}</PopoverContent>
+            <PopoverContent className="!w-fit">
+              {getPopoverContent(chunkIndex)}
+            </PopoverContent>
           </Popover>
         );
       });
@@ -292,4 +296,4 @@ const MarkdownContent = ({
   );
 };
 
-export default MarkdownContent;
+export default memo(MarkdownContent);

@@ -1,11 +1,11 @@
 'use client';
 
-import { FileUploader } from '@/components/file-uploader';
+import { AvatarUpload } from '@/components/avatar-upload';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
-import { SelectWithSearch } from '@/components/originui/select-with-search';
-import { RAGFlowFormItem } from '@/components/ragflow-form';
+import { MetadataFilter } from '@/components/metadata-filter';
 import { SwitchFormField } from '@/components/switch-fom-field';
 import { TavilyFormField } from '@/components/tavily-form-field';
+import { TOCEnhanceFormField } from '@/components/toc-enhance-form-field';
 import {
   FormControl,
   FormField,
@@ -16,26 +16,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslate } from '@/hooks/common-hooks';
-import { useFormContext, useWatch } from 'react-hook-form';
-import { DatasetMetadata } from '../../constants';
-import { MetadataFilterConditions } from './metadata-filter-conditions';
+import { useFormContext } from 'react-hook-form';
 
 export default function ChatBasicSetting() {
   const { t } = useTranslate('chat');
   const form = useFormContext();
-  const kbIds: string[] = useWatch({ control: form.control, name: 'kb_ids' });
-  const metadata = useWatch({
-    control: form.control,
-    name: 'meta_data_filter.method',
-  });
-  const hasKnowledge = Array.isArray(kbIds) && kbIds.length > 0;
-
-  const MetadataOptions = Object.values(DatasetMetadata).map((x) => {
-    return {
-      value: x,
-      label: t(`meta.${x}`),
-    };
-  });
 
   return (
     <div className="space-y-8">
@@ -47,12 +32,7 @@ export default function ChatBasicSetting() {
             <FormItem className="w-full">
               <FormLabel>{t('assistantAvatar')}</FormLabel>
               <FormControl>
-                <FileUploader
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  maxFileCount={1}
-                  maxSize={4 * 1024 * 1024}
-                />
+                <AvatarUpload {...field}></AvatarUpload>
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -64,7 +44,7 @@ export default function ChatBasicSetting() {
         name="name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>{t('assistantName')}</FormLabel>
+            <FormLabel required>{t('assistantName')}</FormLabel>
             <FormControl>
               <Input {...field}></Input>
             </FormControl>
@@ -90,7 +70,9 @@ export default function ChatBasicSetting() {
         name={'prompt_config.empty_response'}
         render={({ field }) => (
           <FormItem>
-            <FormLabel>{t('emptyResponse')}</FormLabel>
+            <FormLabel tooltip={t('emptyResponseTip')}>
+              {t('emptyResponse')}
+            </FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -103,7 +85,9 @@ export default function ChatBasicSetting() {
         name={'prompt_config.prologue'}
         render={({ field }) => (
           <FormItem>
-            <FormLabel>{t('setAnOpener')}</FormLabel>
+            <FormLabel tooltip={t('setAnOpenerTip')}>
+              {t('setAnOpener')}
+            </FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -114,29 +98,22 @@ export default function ChatBasicSetting() {
       <SwitchFormField
         name={'prompt_config.quote'}
         label={t('quote')}
+        tooltip={t('quoteTip')}
       ></SwitchFormField>
       <SwitchFormField
         name={'prompt_config.keyword'}
         label={t('keyword')}
+        tooltip={t('keywordTip')}
       ></SwitchFormField>
       <SwitchFormField
         name={'prompt_config.tts'}
         label={t('tts')}
+        tooltip={t('ttsTip')}
       ></SwitchFormField>
+      <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
       <TavilyFormField></TavilyFormField>
       <KnowledgeBaseFormField></KnowledgeBaseFormField>
-      {hasKnowledge && (
-        <RAGFlowFormItem
-          label={t('metadata')}
-          name={'meta_data_filter.method'}
-          tooltip={t('metadataTip')}
-        >
-          <SelectWithSearch options={MetadataOptions} />
-        </RAGFlowFormItem>
-      )}
-      {hasKnowledge && metadata === DatasetMetadata.Manual && (
-        <MetadataFilterConditions kbIds={kbIds}></MetadataFilterConditions>
-      )}
+      <MetadataFilter></MetadataFilter>
     </div>
   );
 }

@@ -504,6 +504,14 @@ export default {
       baseUrl: 'URL Base',
       baseUrlTip:
         'Se sua chave da API for do OpenAI, ignore isso. Outros provedores intermediários fornecerão essa URL base com a chave da API.',
+      tongyiBaseUrlTip:
+        'Para usuários chineses, não é necessário preencher ou usar https://dashscope.aliyuncs.com/compatible-mode/v1. Para usuários internacionais, use https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+      tongyiBaseUrlPlaceholder:
+        '(Apenas para usuários internacionais, consulte a dica)',
+      minimaxBaseUrlTip:
+        'Somente usuários internacionais: use https://api.minimax.io/v1.',
+      minimaxBaseUrlPlaceholder:
+        '(Somente para usuários internacionais, preencha https://api.minimax.io/v1)',
       modify: 'Modificar',
       systemModelSettings: 'Definir modelos padrão',
       chatModel: 'Modelo de chat',
@@ -726,11 +734,30 @@ export default {
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription:
         'Um componente que realiza buscas no duckduckgo.com, permitindo especificar o número de resultados de pesquisa usando TopN. Ele complementa as bases de conhecimento existentes.',
-      channel: 'Canal',
-      channelTip: `Realize uma busca por texto ou por notícias na entrada do componente`,
-      text: 'Texto',
-      news: 'Notícias',
-      messageHistoryWindowSize: 'Tamanho da janela de mensagens',
+      searXNG: 'SearXNG',
+      searXNGDescription:
+        'Um componente que realiza buscas via URL da instância SearXNG que você fornece. Especifique TopN e URL da instância.',
+      pdfGenerator: 'Gerador de Documentos',
+      pDFGenerator: 'Gerador de Documentos',
+      pdfGeneratorDescription: `Um componente que gera documentos (PDF, DOCX, TXT) de conteúdo formatado em markdown com estilo personalizável, imagens e tabelas. Suporta: **negrito**, *itálico*, # títulos, - listas, tabelas com sintaxe |.`,
+      pDFGeneratorDescription: `Um componente que gera documentos (PDF, DOCX, TXT) de conteúdo formatado em markdown com estilo personalizável, imagens e tabelas. Suporta: **negrito**, *itálico*, # títulos, - listas, tabelas com sintaxe |.`,
+      subtitle: 'Subtítulo',
+      logoImage: 'Imagem Logo',
+      logoPosition: 'Posição Logo',
+      logoWidth: 'Largura Logo',
+      logoHeight: 'Altura Logo',
+      fontFamily: 'Família Fonte',
+      fontSize: 'Tamanho Fonte',
+      titleFontSize: 'Tamanho Fonte Título',
+      pageSize: 'Tamanho Página',
+      orientation: 'Orientação',
+      marginTop: 'Margem Superior',
+      marginBottom: 'Margem Inferior',
+      filename: 'Nome Arquivo',
+      outputDirectory: 'Diretório Saída',
+      addPageNumbers: 'Adicionar Números Página',
+      addTimestamp: 'Adicionar Timestamp',
+      watermarkText: 'Texto Marca Dágua',
       messageHistoryWindowSizeTip:
         'O tamanho da janela do histórico de conversa visível para o LLM. Quanto maior, melhor, mas fique atento ao limite máximo de tokens do LLM.',
       wikipedia: 'Wikipedia',
@@ -1059,6 +1086,8 @@ export default {
       cleanHtml: 'Limpar HTML',
       cleanHtmlTip:
         'Se a resposta for formatada em HTML e apenas o conteúdo principal for desejado, ative esta opção.',
+      invalidUrl:
+        'Deve ser uma URL válida ou uma URL com marcadores de posição de variáveis no formato {nome_variável} ou {componente@variável}',
 
       reference: 'Referência',
       input: 'Entrada',
@@ -1122,7 +1151,6 @@ export default {
       },
       addVariable: 'Adicionar variável',
       variableSettings: 'Configurações da variável',
-      globalVariables: 'Variáveis globais',
       systemPrompt: 'Prompt do sistema',
       addCategory: 'Adicionar categoria',
       categoryName: 'Nome da categoria',

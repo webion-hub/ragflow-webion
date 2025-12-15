@@ -14,18 +14,18 @@
 #  limitations under the License.
 #
 
+import asyncio
 import re
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 import builtins
 import json
 import os
 import logging
 from typing import Any, List, Union
 import pandas as pd
-import trio
 from agent import settings
-from api.utils.api_utils import timeout
+from common.connection_utils import timeout
 
 
 _FEEDED_DEPRECATED_PARAMS = "_feeded_deprecated_params"
@@ -36,7 +36,7 @@ _IS_RAW_CONF = "_is_raw_conf"
 
 class ComponentParamBase(ABC):
     def __init__(self):
-        self.message_history_window_size = 22
+        self.message_history_window_size = 13
         self.inputs = {}
         self.outputs = {}
         self.description = ""
@@ -244,7 +244,7 @@ class ComponentParamBase(ABC):
 
                 if not value_legal:
                     raise ValueError(
-                        "Plase check runtime conf, {} = {} does not match user-parameter restriction".format(
+                        "Please check runtime conf, {} = {} does not match user-parameter restriction".format(
                             variable, value
                         )
                     )
@@ -392,8 +392,8 @@ class ComponentParamBase(ABC):
 
 class ComponentBase(ABC):
     component_name: str
-    thread_limiter = trio.CapacityLimiter(int(os.environ.get('MAX_CONCURRENT_CHATS', 10)))
-    variable_ref_patt = r"\{* *\{([a-zA-Z:0-9]+@[A-Za-z:0-9_.-]+|sys\.[a-z_]+)\} *\}*"
+    thread_limiter = asyncio.Semaphore(int(os.environ.get("MAX_CONCURRENT_CHATS", 10)))
+    variable_ref_patt = r"\{* *\{([a-zA-Z:0-9]+@[A-Za-z0-9_.]+|sys\.[A-Za-z0-9_.]+|env\.[A-Za-z0-9_.]+)\} *\}*"
 
     def __str__(self):
         """
@@ -410,12 +410,26 @@ class ComponentBase(ABC):
         )
 
     def __init__(self, canvas, id, param: ComponentParamBase):
-        from agent.canvas import Canvas  # Local import to avoid cyclic dependency
-        assert isinstance(canvas, Canvas), "canvas must be an instance of Canvas"
+        from agent.canvas import Graph  # Local import to avoid cyclic dependency
+        assert isinstance(canvas, Graph), "canvas must be an instance of Canvas"
         self._canvas = canvas
         self._id = id
         self._param = param
         self._param.check()
+
+    def is_canceled(self) -> bool:
+        return self._canvas.is_canceled()
+
+    def check_if_canceled(self, message: str = "") -> bool:
+        if self.is_canceled():
+            task_id = getattr(self._canvas, 'task_id', 'unknown')
+            log_message = f"Task {task_id} has been canceled"
+            if message:
+                log_message += f" during {message}"
+            logging.info(log_message)
+            self.set_output("_ERROR", "Task has been canceled")
+            return True
+        return False
 
     def invoke(self, **kwargs) -> dict[str, Any]:
         self.set_output("_created_time", time.perf_counter())
@@ -431,7 +445,35 @@ class ComponentBase(ABC):
         self.set_output("_elapsed_time", time.perf_counter() - self.output("_created_time"))
         return self.output()
 
-    @timeout(os.environ.get("COMPONENT_EXEC_TIMEOUT", 10*60))
+    async def invoke_async(self, **kwargs) -> dict[str, Any]:
+        """
+        Async wrapper for component invocation.
+        Prefers coroutine `_invoke_async` if present; otherwise falls back to `_invoke`.
+        Handles timing and error recording consistently with `invoke`.
+        """
+        self.set_output("_created_time", time.perf_counter())
+        try:
+            if self.check_if_canceled("Component processing"):
+                return
+
+            fn_async = getattr(self, "_invoke_async", None)
+            if fn_async and asyncio.iscoroutinefunction(fn_async):
+                await fn_async(**kwargs)
+            elif asyncio.iscoroutinefunction(self._invoke):
+                await self._invoke(**kwargs)
+            else:
+                await asyncio.to_thread(self._invoke, **kwargs)
+        except Exception as e:
+            if self.get_exception_default_value():
+                self.set_exception_default_value()
+            else:
+                self.set_output("_ERROR", str(e))
+            logging.exception(e)
+        self._param.debug_inputs = {}
+        self.set_output("_elapsed_time", time.perf_counter() - self.output("_created_time"))
+        return self.output()
+
+    @timeout(int(os.environ.get("COMPONENT_EXEC_TIMEOUT", 10*60)))
     def _invoke(self, **kwargs):
         raise NotImplementedError()
 
@@ -448,11 +490,16 @@ class ComponentBase(ABC):
     def error(self):
         return self._param.outputs.get("_ERROR", {}).get("value")
 
-    def reset(self):
-        for k in self._param.outputs.keys():
-            self._param.outputs[k]["value"] = None
-        for k in self._param.inputs.keys():
-            self._param.inputs[k]["value"] = None
+    def reset(self, only_output=False):
+        outputs: dict = self._param.outputs # for better performance
+        for k in outputs.keys():
+            outputs[k]["value"] = None
+        if only_output:
+            return
+
+        inputs: dict = self._param.inputs # for better performance
+        for k in inputs.keys():
+            inputs[k]["value"] = None
         self._param.debug_inputs = {}
 
     def get_input(self, key: str=None) -> Union[Any, dict[str, Any]]:
@@ -479,7 +526,7 @@ class ComponentBase(ABC):
 
     def get_input_elements_from_text(self, txt: str) -> dict[str, dict[str, str]]:
         res = {}
-        for r in re.finditer(self.variable_ref_patt, txt, flags=re.IGNORECASE):
+        for r in re.finditer(self.variable_ref_patt, txt, flags=re.IGNORECASE|re.DOTALL):
             exp = r.group(1)
             cpn_id, var_nm = exp.split("@") if exp.find("@")>0 else ("", exp)
             res[exp] = {
@@ -512,6 +559,7 @@ class ComponentBase(ABC):
     def get_param(self, name):
         if hasattr(self._param, name):
             return getattr(self._param, name)
+        return None
 
     def debug(self, **kwargs):
         return self._invoke(**kwargs)
@@ -519,11 +567,15 @@ class ComponentBase(ABC):
     def get_parent(self) -> Union[object, None]:
         pid = self._canvas.get_component(self._id).get("parent_id")
         if not pid:
-            return
+            return None
         return self._canvas.get_component(pid)["obj"]
 
     def get_upstream(self) -> List[str]:
         cpn_nms = self._canvas.get_component(self._id)['upstream']
+        return cpn_nms
+
+    def get_downstream(self) -> List[str]:
+        cpn_nms = self._canvas.get_component(self._id)['downstream']
         return cpn_nms
 
     @staticmethod
@@ -540,7 +592,7 @@ class ComponentBase(ABC):
 
     def exception_handler(self):
         if not self._param.exception_method:
-            return
+            return None
         return {
             "goto": self._param.exception_goto,
             "default_value": self._param.exception_default_value
@@ -554,6 +606,5 @@ class ComponentBase(ABC):
     def set_exception_default_value(self):
         self.set_output("result", self.get_exception_default_value())
 
-    @abstractmethod
     def thoughts(self) -> str:
-        ...
+        raise NotImplementedError()

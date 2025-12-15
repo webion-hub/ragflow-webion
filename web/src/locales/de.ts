@@ -624,6 +624,14 @@ export default {
       baseUrl: 'Basis-URL',
       baseUrlTip:
         'Wenn Ihr API-Schlüssel von OpenAI stammt, ignorieren Sie dies. Andere Zwischenanbieter geben diese Basis-URL mit dem API-Schlüssel an.',
+      tongyiBaseUrlTip:
+        'Für chinesische Benutzer ist keine Eingabe erforderlich oder verwenden Sie https://dashscope.aliyuncs.com/compatible-mode/v1. Für internationale Benutzer verwenden Sie https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+      tongyiBaseUrlPlaceholder:
+        '(Nur für internationale Benutzer, bitte Hinweis beachten)',
+      minimaxBaseUrlTip:
+        'Nur für internationale Nutzer: https://api.minimax.io/v1 verwenden.',
+      minimaxBaseUrlPlaceholder:
+        '(Nur für internationale Benutzer, https://api.minimax.io/v1 eintragen)',
       modify: 'Ändern',
       systemModelSettings: 'Standardmodelle festlegen',
       chatModel: 'Chat-Modell',
@@ -848,7 +856,6 @@ export default {
       generate: 'Generieren',
       answer: 'Interagieren',
       categorize: 'Kategorisieren',
-      relevant: 'Relevant',
       rewriteQuestion: 'Umschreiben',
       rewrite: 'Umschreiben',
       begin: 'Beginn',
@@ -868,6 +875,30 @@ export default {
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription:
         'Eine Komponente, die auf duckduckgo.com sucht und Ihnen ermöglicht, die Anzahl der Suchergebnisse mit TopN anzugeben. Sie ergänzt die vorhandenen Wissensdatenbanken.',
+      searXNG: 'SearXNG',
+      searXNGDescription:
+        'Eine Komponente, die auf https://searxng.org/ sucht und Ihnen ermöglicht, die Anzahl der Suchergebnisse mit TopN anzugeben. Sie ergänzt die vorhandenen Wissensdatenbanken.',
+      pdfGenerator: 'Dokumentengenerator',
+      pDFGenerator: 'Dokumentengenerator',
+      pdfGeneratorDescription: `Eine Komponente, die Dokumente (PDF, DOCX, TXT) aus markdown-formatierten Inhalten mit anpassbarem Stil, Bildern und Tabellen generiert. Unterstützt: **fett**, *kursiv*, # Überschriften, - Listen, Tabellen mit | Syntax.`,
+      pDFGeneratorDescription: `Eine Komponente, die Dokumente (PDF, DOCX, TXT) aus markdown-formatierten Inhalten mit anpassbarem Stil, Bildern und Tabellen generiert. Unterstützt: **fett**, *kursiv*, # Überschriften, - Listen, Tabellen mit | Syntax.`,
+      subtitle: 'Untertitel',
+      logoImage: 'Logo-Bild',
+      logoPosition: 'Logo-Position',
+      logoWidth: 'Logo-Breite',
+      logoHeight: 'Logo-Höhe',
+      fontFamily: 'Schriftfamilie',
+      fontSize: 'Schriftgröße',
+      titleFontSize: 'Titel-Schriftgröße',
+      pageSize: 'Seitengröße',
+      orientation: 'Ausrichtung',
+      marginTop: 'Oberer Rand',
+      marginBottom: 'Unterer Rand',
+      filename: 'Dateiname',
+      outputDirectory: 'Ausgabeverzeichnis',
+      addPageNumbers: 'Seitenzahlen hinzufügen',
+      addTimestamp: 'Zeitstempel hinzufügen',
+      watermarkText: 'Wasserzeichentext',
       channel: 'Kanal',
       channelTip:
         'Führt eine Textsuche oder Nachrichtensuche für die Eingabe der Komponente durch',
@@ -1163,6 +1194,8 @@ export default {
       cleanHtml: 'HTML bereinigen',
       cleanHtmlTip:
         'Wenn die Antwort im HTML-Format vorliegt und nur der Hauptinhalt gewünscht wird, schalten Sie dies bitte ein.',
+      invalidUrl:
+        'Muss eine gültige URL oder eine URL mit Variablenplatzhaltern im Format {Variablenname} oder {Komponente@Variable} sein',
       reference: 'Referenz',
       input: 'Eingabe',
       output: 'Ausgabe',
@@ -1220,7 +1253,6 @@ export default {
       },
       addVariable: 'Variable hinzufügen',
       variableSettings: 'Variableneinstellungen',
-      globalVariables: 'Globale Variablen',
       systemPrompt: 'System-Prompt',
       addCategory: 'Kategorie hinzufügen',
       categoryName: 'Kategoriename',

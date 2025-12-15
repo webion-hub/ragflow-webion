@@ -1,33 +1,36 @@
 import message from '@/components/ui/message';
 import { SharedFrom } from '@/constants/chat';
-import { useSelectTestingResult } from '@/hooks/knowledge-hooks';
+import { useSetModalState } from '@/hooks/common-hooks';
 import {
   useGetPaginationWithRouter,
   useSendMessageWithSse,
 } from '@/hooks/logic-hooks';
 import { useSetPaginationParams } from '@/hooks/route-hook';
-import { useKnowledgeBaseId } from '@/hooks/use-knowledge-request';
+import {
+  useKnowledgeBaseId,
+  useSelectTestingResult,
+} from '@/hooks/use-knowledge-request';
 import { ResponsePostType } from '@/interfaces/database/base';
 import { IAnswer } from '@/interfaces/database/chat';
 import { ITestingResult } from '@/interfaces/database/knowledge';
 import { IAskRequestBody } from '@/interfaces/request/chat';
-import chatService from '@/services/chat-service';
 import kbService from '@/services/knowledge-service';
+import chatService from '@/services/next-chat-service';
 import searchService from '@/services/search-service';
 import api from '@/utils/api';
 import { useMutation } from '@tanstack/react-query';
-import { has, isEmpty, trim } from 'lodash';
+import { has, isEmpty, isEqual, trim } from 'lodash';
 import {
   ChangeEventHandler,
   Dispatch,
   SetStateAction,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { useSearchParams } from 'umi';
 import { ISearchAppDetailProps } from '../next-searches/hooks';
-import { useShowMindMapDrawer } from '../search/hooks';
 import { useClickDrawer } from './document-preview-modal/hooks';
 
 export interface ISearchingProps {
@@ -88,6 +91,41 @@ export const useSearchFetchMindMap = () => {
   });
 
   return { data, loading, fetchMindMap: mutateAsync };
+};
+
+export const useShowMindMapDrawer = (
+  kbIds: string[],
+  question: string,
+  searchId = '',
+) => {
+  const { visible, showModal, hideModal } = useSetModalState();
+  const ref = useRef<any>();
+
+  const {
+    fetchMindMap,
+    data: mindMap,
+    loading: mindMapLoading,
+  } = useSearchFetchMindMap();
+
+  const handleShowModal = useCallback(() => {
+    const searchParams = { question: trim(question), kb_ids: kbIds, searchId };
+    if (
+      !isEmpty(searchParams.question) &&
+      !isEqual(searchParams, ref.current)
+    ) {
+      ref.current = searchParams;
+      fetchMindMap(searchParams);
+    }
+    showModal();
+  }, [fetchMindMap, showModal, question, kbIds, searchId]);
+
+  return {
+    mindMap,
+    mindMapVisible: visible,
+    mindMapLoading,
+    showMindMapModal: handleShowModal,
+    hideMindMapModal: hideModal,
+  };
 };
 
 export const useTestChunkRetrieval = (
@@ -234,7 +272,10 @@ export const useTestRetrieval = (
     setSelectedDocumentIds,
   };
 };
-export const useFetchRelatedQuestions = (tenantId?: string) => {
+export const useFetchRelatedQuestions = (
+  tenantId?: string,
+  searchId?: string,
+) => {
   const [searchParams] = useSearchParams();
   const shared_id = searchParams.get('shared_id');
   const retrievalTestFunc = shared_id
@@ -251,6 +292,7 @@ export const useFetchRelatedQuestions = (tenantId?: string) => {
       const { data } = await retrievalTestFunc({
         question,
         tenant_id: tenantId,
+        search_id: searchId,
       });
 
       return data?.data ?? [];
@@ -260,7 +302,12 @@ export const useFetchRelatedQuestions = (tenantId?: string) => {
   return { data, loading, fetchRelatedQuestions: mutateAsync };
 };
 
-export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
+export const useSendQuestion = (
+  kbIds: string[],
+  tenantId?: string,
+  searchId: string = '',
+  related_search: boolean = false,
+) => {
   const { sharedId } = useGetSharedSearchParams();
   const { send, answer, done, stopOutputMessage } = useSendMessageWithSse(
     sharedId ? api.askShare : api.ask,
@@ -271,7 +318,7 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
   const [sendingLoading, setSendingLoading] = useState(false);
   const [currentAnswer, setCurrentAnswer] = useState({} as IAnswer);
   const { fetchRelatedQuestions, data: relatedQuestions } =
-    useFetchRelatedQuestions(tenantId);
+    useFetchRelatedQuestions(tenantId, searchId);
   const [searchStr, setSearchStr] = useState<string>('');
   const [isFirstRender, setIsFirstRender] = useState(true);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
@@ -279,23 +326,28 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
   const { pagination, setPagination } = useGetPaginationWithRouter();
 
   const sendQuestion = useCallback(
-    (question: string) => {
+    (question: string, enableAI: boolean = true) => {
       const q = trim(question);
       if (isEmpty(q)) return;
       setPagination({ page: 1 });
       setIsFirstRender(false);
       setCurrentAnswer({} as IAnswer);
-      setSendingLoading(true);
-      send({ kb_ids: kbIds, question: q, tenantId });
+      if (enableAI) {
+        setSendingLoading(true);
+        send({ kb_ids: kbIds, question: q, tenantId, search_id: searchId });
+      }
       testChunk({
         kb_id: kbIds,
         highlight: true,
         question: q,
         page: 1,
         size: pagination.pageSize,
+        search_id: searchId,
       });
 
-      fetchRelatedQuestions(q);
+      if (related_search) {
+        fetchRelatedQuestions(q);
+      }
     },
     [
       send,
@@ -305,6 +357,8 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
       setPagination,
       pagination.pageSize,
       tenantId,
+      searchId,
+      related_search,
     ],
   );
 
@@ -314,12 +368,13 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
     }, []);
 
   const handleClickRelatedQuestion = useCallback(
-    (question: string) => () => {
-      if (sendingLoading) return;
+    (question: string, enableAI: boolean = true) =>
+      () => {
+        if (sendingLoading) return;
 
-      setSearchStr(question);
-      sendQuestion(question);
-    },
+        setSearchStr(question);
+        sendQuestion(question, enableAI);
+      },
     [sendQuestion, sendingLoading],
   );
 
@@ -335,6 +390,7 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
         doc_ids: documentIds ?? selectedDocumentIds,
         page,
         size,
+        search_id: searchId,
       });
 
       testChunkAll({
@@ -344,6 +400,7 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
         doc_ids: [],
         page,
         size,
+        search_id: searchId,
       });
     },
     [
@@ -353,6 +410,7 @@ export const useSendQuestion = (kbIds: string[], tenantId?: string) => {
       kbIds,
       selectedDocumentIds,
       testChunkAll,
+      searchId,
     ],
   );
 
@@ -408,11 +466,15 @@ export const useSearching = ({
     isSearchStrEmpty,
     setSearchStr,
     stopOutputMessage,
-  } = useSendQuestion(searchData.search_config.kb_ids, tenantId as string);
+  } = useSendQuestion(
+    searchData.search_config.kb_ids,
+    tenantId as string,
+    searchData.id,
+    searchData.search_config.related_search,
+  );
 
   const handleSearchStrChange = useCallback(
     (value: string) => {
-      console.log('handleSearchStrChange', value);
       setSearchStr(value);
     },
     [setSearchStr],
@@ -424,10 +486,16 @@ export const useSearching = ({
   useEffect(() => {
     if (searchText) {
       setSearchStr(searchText);
-      sendQuestion(searchText);
+      sendQuestion(searchText, searchData.search_config.summary);
       setSearchText?.('');
     }
-  }, [searchText, sendQuestion, setSearchStr, setSearchText]);
+  }, [
+    searchText,
+    sendQuestion,
+    setSearchStr,
+    setSearchText,
+    searchData.search_config.summary,
+  ]);
 
   const {
     mindMapVisible,
@@ -435,15 +503,25 @@ export const useSearching = ({
     showMindMapModal,
     mindMapLoading,
     mindMap,
-  } = useShowMindMapDrawer(searchData.search_config.kb_ids, searchStr);
+  } = useShowMindMapDrawer(
+    searchData.search_config.kb_ids,
+    searchStr,
+    searchData.id,
+  );
   const { chunks, total } = useSelectTestingResult();
 
   const handleSearch = useCallback(
     (value: string) => {
-      sendQuestion(value);
+      sendQuestion(value, searchData.search_config.summary);
       setSearchStr?.(value);
+      hideMindMapModal();
     },
-    [setSearchStr, sendQuestion],
+    [
+      setSearchStr,
+      sendQuestion,
+      hideMindMapModal,
+      searchData.search_config.summary,
+    ],
   );
 
   const { pagination, setPagination } = useGetPaginationWithRouter();
@@ -496,6 +574,31 @@ export const useCheckSettings = (data: ISearchAppDetailProps) => {
   const { search_config, name } = data;
   const { kb_ids } = search_config;
   return {
-    openSetting: kb_ids && kb_ids.length && name ? false : true,
+    openSetting: kb_ids && kb_ids.length > 0 && name ? false : true,
   };
+};
+
+export const usePendingMindMap = () => {
+  const [count, setCount] = useState<number>(0);
+  const ref = useRef<NodeJS.Timeout>();
+
+  const setCountInterval = useCallback(() => {
+    ref.current = setInterval(() => {
+      setCount((pre) => {
+        if (pre > 40) {
+          clearInterval(ref?.current);
+        }
+        return pre + 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    setCountInterval();
+    return () => {
+      clearInterval(ref?.current);
+    };
+  }, [setCountInterval]);
+
+  return Number(((count / 43) * 100).toFixed(0));
 };

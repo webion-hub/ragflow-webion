@@ -25,12 +25,12 @@ from infinity.common import ConflictType, InfinityException, SortType
 from infinity.index import IndexInfo, IndexType
 from infinity.connection_pool import ConnectionPool
 from infinity.errors import ErrorCode
-from rag import settings
-from rag.settings import PAGERANK_FLD, TAG_FLD
-from rag.utils import singleton
+from common.decorator import singleton
 import pandas as pd
-from api.utils.file_utils import get_project_base_directory
-
+from common.file_utils import get_project_base_directory
+from rag.nlp import is_english
+from common.constants import PAGERANK_FLD, TAG_FLD
+from common import settings
 from rag.utils.doc_store_conn import (
     DocStoreConnection,
     MatchExpr,
@@ -40,13 +40,60 @@ from rag.utils.doc_store_conn import (
     OrderByExpr,
 )
 
-logger = logging.getLogger('ragflow.infinity_conn')
+logger = logging.getLogger("ragflow.infinity_conn")
+
 
 def field_keyword(field_name: str):
-        # The "docnm_kwd" field is always a string, not list.
-        if field_name == "source_id" or (field_name.endswith("_kwd") and field_name != "docnm_kwd" and field_name != "knowledge_graph_kwd"):
-            return True
-        return False
+    # Treat "*_kwd" tag-like columns as keyword lists except knowledge_graph_kwd; source_id is also keyword-like.
+    if field_name == "source_id" or (field_name.endswith("_kwd") and field_name not in ["knowledge_graph_kwd", "docnm_kwd", "important_kwd", "question_kwd"]):
+        return True
+    return False
+
+def convert_select_fields(output_fields: list[str]) -> list[str]:
+    for i, field in enumerate(output_fields):
+        if field in ["docnm_kwd", "title_tks", "title_sm_tks"]:
+            output_fields[i] = "docnm"
+        elif field in ["important_kwd", "important_tks"]:
+            output_fields[i] = "important_keywords"
+        elif field in ["question_kwd", "question_tks"]:
+            output_fields[i] = "questions"
+        elif field in ["content_with_weight", "content_ltks", "content_sm_ltks"]:
+            output_fields[i] = "content"
+        elif field in ["authors_tks", "authors_sm_tks"]:
+            output_fields[i] = "authors"
+    return list(set(output_fields))
+
+def convert_matching_field(field_weightstr: str) -> str:
+    tokens = field_weightstr.split("^")
+    field = tokens[0]
+    if field == "docnm_kwd" or field == "title_tks":
+        field = "docnm@ft_docnm_rag_coarse"
+    elif field == "title_sm_tks":
+        field = "docnm@ft_docnm_rag_fine"
+    elif field == "important_kwd":
+        field = "important_keywords@ft_important_keywords_rag_coarse"
+    elif field == "important_tks":
+        field = "important_keywords@ft_important_keywords_rag_fine"
+    elif field == "question_kwd":
+        field = "questions@ft_questions_rag_coarse"
+    elif field == "question_tks":
+        field = "questions@ft_questions_rag_fine"
+    elif field == "content_with_weight" or field == "content_ltks":
+        field = "content@ft_content_rag_coarse"
+    elif field == "content_sm_ltks":
+        field = "content@ft_content_rag_fine"
+    elif field == "authors_tks":
+        field = "authors@ft_authors_rag_coarse"
+    elif field == "authors_sm_tks":
+        field = "authors@ft_authors_rag_fine"
+    tokens[0] = field
+    return "^".join(tokens)
+
+def list2str(lst: str|list, sep: str = " ") -> str:
+    if isinstance(lst, str):
+        return lst
+    return sep.join(lst)
+
 
 def equivalent_condition_to_str(condition: dict, table_instance=None) -> str | None:
     assert "_id" not in condition
@@ -67,26 +114,26 @@ def equivalent_condition_to_str(condition: dict, table_instance=None) -> str | N
 
     cond = list()
     for k, v in condition.items():
-        if not isinstance(k, str) or k in ["kb_id"] or not v:
+        if not isinstance(k, str) or not v:
             continue
         if field_keyword(k):
             if isinstance(v, list):
                 inCond = list()
                 for item in v:
                     if isinstance(item, str):
-                        item = item.replace("'","''")
-                    inCond.append(f"filter_fulltext('{k}', '{item}')")
+                        item = item.replace("'", "''")
+                    inCond.append(f"filter_fulltext('{convert_matching_field(k)}', '{item}')")
                 if inCond:
                     strInCond = " or ".join(inCond)
                     strInCond = f"({strInCond})"
                     cond.append(strInCond)
             else:
-                cond.append(f"filter_fulltext('{k}', '{v}')")
+                cond.append(f"filter_fulltext('{convert_matching_field(k)}', '{v}')")
         elif isinstance(v, list):
             inCond = list()
             for item in v:
                 if isinstance(item, str):
-                    item = item.replace("'","''")
+                    item = item.replace("'", "''")
                     inCond.append(f"'{item}'")
                 else:
                     inCond.append(str(item))
@@ -112,13 +159,13 @@ def concat_dataframes(df_list: list[pd.DataFrame], selectFields: list[str]) -> p
     df_list2 = [df for df in df_list if not df.empty]
     if df_list2:
         return pd.concat(df_list2, axis=0).reset_index(drop=True)
-    
+
     schema = []
     for field_name in selectFields:
-        if field_name == 'score()': # Workaround: fix schema is changed to score()
-            schema.append('SCORE')
-        elif field_name == 'similarity()': # Workaround: fix schema is changed to similarity()
-            schema.append('SIMILARITY')
+        if field_name == "score()":  # Workaround: fix schema is changed to score()
+            schema.append("SCORE")
+        elif field_name == "similarity()":  # Workaround: fix schema is changed to similarity()
+            schema.append("SIMILARITY")
         else:
             schema.append(field_name)
     return pd.DataFrame(columns=schema)
@@ -158,9 +205,7 @@ class InfinityConnection(DocStoreConnection):
 
     def _migrate_db(self, inf_conn):
         inf_db = inf_conn.create_database(self.dbName, ConflictType.Ignore)
-        fp_mapping = os.path.join(
-            get_project_base_directory(), "conf", "infinity_mapping.json"
-        )
+        fp_mapping = os.path.join(get_project_base_directory(), "conf", "infinity_mapping.json")
         if not os.path.exists(fp_mapping):
             raise Exception(f"Mapping file not found at {fp_mapping}")
         schema = json.load(open(fp_mapping))
@@ -178,18 +223,18 @@ class InfinityConnection(DocStoreConnection):
                     continue
                 res = inf_table.add_columns({field_name: field_info})
                 assert res.error_code == infinity.ErrorCode.OK
-                logger.info(
-                    f"INFINITY added following column to table {table_name}: {field_name} {field_info}"
-                )
+                logger.info(f"INFINITY added following column to table {table_name}: {field_name} {field_info}")
                 if field_info["type"] != "varchar" or "analyzer" not in field_info:
                     continue
-                inf_table.create_index(
-                    f"text_idx_{field_name}",
-                    IndexInfo(
-                        field_name, IndexType.FullText, {"ANALYZER": field_info["analyzer"]}
-                    ),
-                    ConflictType.Ignore,
-                )
+                analyzers = field_info["analyzer"]
+                if isinstance(analyzers, str):
+                    analyzers = [analyzers]
+                for analyzer in analyzers:
+                    inf_table.create_index(
+                        f"ft_{re.sub(r'[^a-zA-Z0-9]', '_', field_name)}_{re.sub(r'[^a-zA-Z0-9]', '_', analyzer)}",
+                        IndexInfo(field_name, IndexType.FullText, {"ANALYZER": analyzer}),
+                        ConflictType.Ignore,
+                    )
 
     """
     Database operations
@@ -221,9 +266,7 @@ class InfinityConnection(DocStoreConnection):
         inf_conn = self.connPool.get_conn()
         inf_db = inf_conn.create_database(self.dbName, ConflictType.Ignore)
 
-        fp_mapping = os.path.join(
-            get_project_base_directory(), "conf", "infinity_mapping.json"
-        )
+        fp_mapping = os.path.join(get_project_base_directory(), "conf", "infinity_mapping.json")
         if not os.path.exists(fp_mapping):
             raise Exception(f"Mapping file not found at {fp_mapping}")
         schema = json.load(open(fp_mapping))
@@ -251,17 +294,17 @@ class InfinityConnection(DocStoreConnection):
         for field_name, field_info in schema.items():
             if field_info["type"] != "varchar" or "analyzer" not in field_info:
                 continue
-            inf_table.create_index(
-                f"text_idx_{field_name}",
-                IndexInfo(
-                    field_name, IndexType.FullText, {"ANALYZER": field_info["analyzer"]}
-                ),
-                ConflictType.Ignore,
-            )
+            analyzers = field_info["analyzer"]
+            if isinstance(analyzers, str):
+                analyzers = [analyzers]
+            for analyzer in analyzers:
+                inf_table.create_index(
+                    f"ft_{re.sub(r'[^a-zA-Z0-9]', '_', field_name)}_{re.sub(r'[^a-zA-Z0-9]', '_', analyzer)}",
+                    IndexInfo(field_name, IndexType.FullText, {"ANALYZER": analyzer}),
+                    ConflictType.Ignore,
+                )
         self.connPool.release_conn(inf_conn)
-        logger.info(
-            f"INFINITY created table {table_name}, vector size {vectorSize}"
-        )
+        logger.info(f"INFINITY created table {table_name}, vector size {vectorSize}")
 
     def deleteIdx(self, indexName: str, knowledgebaseId: str):
         table_name = f"{indexName}_{knowledgebaseId}"
@@ -288,20 +331,21 @@ class InfinityConnection(DocStoreConnection):
     """
 
     def search(
-            self, selectFields: list[str],
-            highlightFields: list[str],
-            condition: dict,
-            matchExprs: list[MatchExpr],
-            orderBy: OrderByExpr,
-            offset: int,
-            limit: int,
-            indexNames: str | list[str],
-            knowledgebaseIds: list[str],
-            aggFields: list[str] = [],
-            rank_feature: dict | None = None
+        self,
+        selectFields: list[str],
+        highlightFields: list[str],
+        condition: dict,
+        matchExprs: list[MatchExpr],
+        orderBy: OrderByExpr,
+        offset: int,
+        limit: int,
+        indexNames: str | list[str],
+        knowledgebaseIds: list[str],
+        aggFields: list[str] = [],
+        rank_feature: dict | None = None,
     ) -> tuple[pd.DataFrame, int]:
         """
-        TODO: Infinity doesn't provide highlight
+        BUG: Infinity returns empty for a highlight field if the query string doesn't use that field.
         """
         if isinstance(indexNames, str):
             indexNames = indexNames.split(",")
@@ -311,6 +355,7 @@ class InfinityConnection(DocStoreConnection):
         df_list = list()
         table_list = list()
         output = selectFields.copy()
+        output = convert_select_fields(output)
         for essential_field in ["id"] + aggFields:
             if essential_field not in output:
                 output.append(essential_field)
@@ -361,6 +406,7 @@ class InfinityConnection(DocStoreConnection):
             if isinstance(matchExpr, MatchTextExpr):
                 if filter_cond and "filter" not in matchExpr.extra_options:
                     matchExpr.extra_options.update({"filter": filter_cond})
+                matchExpr.fields = [convert_matching_field(field) for field in matchExpr.fields]
                 fields = ",".join(matchExpr.fields)
                 filter_fulltext = f"filter_fulltext('{fields}', '{matchExpr.matching_text}')"
                 if filter_cond:
@@ -397,6 +443,9 @@ class InfinityConnection(DocStoreConnection):
                     del matchExpr.extra_options["similarity"]
                 logger.debug(f"INFINITY search MatchDenseExpr: {json.dumps(matchExpr.__dict__)}")
             elif isinstance(matchExpr, FusionExpr):
+                if matchExpr.method == "weighted_sum":
+                    # The default is "minmax" which gives a zero score for the last doc.
+                    matchExpr.fusion_params["normalize"] = "atan"
                 logger.debug(f"INFINITY search FusionExpr: {json.dumps(matchExpr.__dict__)}")
 
         order_by_expr_list = list()
@@ -438,9 +487,7 @@ class InfinityConnection(DocStoreConnection):
                                 matchExpr.extra_options.copy(),
                             )
                         elif isinstance(matchExpr, FusionExpr):
-                            builder = builder.fusion(
-                                matchExpr.method, matchExpr.topn, matchExpr.fusion_params
-                            )
+                            builder = builder.fusion(matchExpr.method, matchExpr.topn, matchExpr.fusion_params)
                 else:
                     if filter_cond and len(filter_cond) > 0:
                         builder.filter(filter_cond)
@@ -455,15 +502,13 @@ class InfinityConnection(DocStoreConnection):
         self.connPool.release_conn(inf_conn)
         res = concat_dataframes(df_list, output)
         if matchExprs:
-            res['Sum'] = res[score_column] + res[PAGERANK_FLD]
-            res = res.sort_values(by='Sum', ascending=False).reset_index(drop=True).drop(columns=['Sum'])
+            res["_score"] = res[score_column] + res[PAGERANK_FLD]
+            res = res.sort_values(by="_score", ascending=False).reset_index(drop=True)
             res = res.head(limit)
         logger.debug(f"INFINITY search final result: {str(res)}")
         return res, total_hits_count
 
-    def get(
-            self, chunkId: str, indexName: str, knowledgebaseIds: list[str]
-    ) -> dict | None:
+    def get(self, chunkId: str, indexName: str, knowledgebaseIds: list[str]) -> dict | None:
         inf_conn = self.connPool.get_conn()
         db_instance = inf_conn.get_database(self.dbName)
         df_list = list()
@@ -476,20 +521,20 @@ class InfinityConnection(DocStoreConnection):
             try:
                 table_instance = db_instance.get_table(table_name)
             except Exception:
-                logger.warning(
-                    f"Table not found: {table_name}, this knowledge base isn't created in Infinity. Maybe it is created in other document engine.")
+                logger.warning(f"Table not found: {table_name}, this knowledge base isn't created in Infinity. Maybe it is created in other document engine.")
                 continue
             kb_res, _ = table_instance.output(["*"]).filter(f"id = '{chunkId}'").to_df()
             logger.debug(f"INFINITY get table: {str(table_list)}, result: {str(kb_res)}")
             df_list.append(kb_res)
         self.connPool.release_conn(inf_conn)
         res = concat_dataframes(df_list, ["id"])
-        res_fields = self.getFields(res, res.columns.tolist())
+        fields = set(res.columns.tolist())
+        for field in ["docnm_kwd", "title_tks", "title_sm_tks", "important_kwd", "important_tks", "question_kwd", "question_tks","content_with_weight", "content_ltks", "content_sm_ltks", "authors_tks", "authors_sm_tks"]:
+            fields.add(field)
+        res_fields = self.get_fields(res, list(fields))
         return res_fields.get(chunkId, None)
 
-    def insert(
-            self, documents: list[dict], indexName: str, knowledgebaseId: str = None
-    ) -> list[str]:
+    def insert(self, documents: list[dict], indexName: str, knowledgebaseId: str = None) -> list[str]:
         inf_conn = self.connPool.get_conn()
         db_instance = inf_conn.get_database(self.dbName)
         table_name = f"{indexName}_{knowledgebaseId}"
@@ -524,15 +569,46 @@ class InfinityConnection(DocStoreConnection):
         for d in docs:
             assert "_id" not in d
             assert "id" in d
-            for k, v in d.items():
-                if field_keyword(k):
+            for k, v in list(d.items()):
+                if k == "docnm_kwd":
+                    d["docnm"] = v
+                elif k == "title_kwd":
+                    if not d.get("docnm_kwd"):
+                        d["docnm"] = list2str(v)
+                elif k == "title_sm_tks":
+                    if not d.get("docnm_kwd"):
+                        d["docnm"] = list2str(v)
+                elif k == "important_kwd":
+                    d["important_keywords"] = list2str(v)
+                elif k == "important_tks":
+                    if not d.get("important_kwd"):
+                        d["important_keywords"] = v
+                elif k == "content_with_weight":
+                    d["content"] = v
+                elif k == "content_ltks":
+                    if not d.get("content_with_weight"):
+                        d["content"] = v
+                elif k == "content_sm_ltks":
+                    if not d.get("content_with_weight"):
+                        d["content"] = v
+                elif k == "authors_tks":
+                    d["authors"] = v
+                elif k == "authors_sm_tks":
+                    if not d.get("authors_tks"):
+                        d["authors"] = v
+                elif k == "question_kwd":
+                    d["questions"] = list2str(v, "\n")
+                elif k == "question_tks":
+                    if not d.get("question_kwd"):
+                        d["questions"] = list2str(v)
+                elif field_keyword(k):
                     if isinstance(v, list):
                         d[k] = "###".join(v)
                     else:
                         d[k] = v
                 elif re.search(r"_feas$", k):
                     d[k] = json.dumps(v)
-                elif k == 'kb_id':
+                elif k == "kb_id":
                     if isinstance(d[k], list):
                         d[k] = d[k][0]  # since d[k] is a list, but we need a str
                 elif k == "position_int":
@@ -544,6 +620,9 @@ class InfinityConnection(DocStoreConnection):
                     d[k] = "_".join(f"{num:08x}" for num in v)
                 else:
                     d[k] = v
+            for k in ["docnm_kwd", "title_tks", "title_sm_tks", "important_kwd", "important_tks", "content_with_weight", "content_ltks", "content_sm_ltks", "authors_tks", "authors_sm_tks", "question_kwd", "question_tks"]:
+                if k in d:
+                    del d[k]
 
             for n, vs in embedding_clmns:
                 if n in d:
@@ -561,18 +640,16 @@ class InfinityConnection(DocStoreConnection):
         logger.debug(f"INFINITY inserted into {table_name} {str_ids}.")
         return []
 
-    def update(
-            self, condition: dict, newValue: dict, indexName: str, knowledgebaseId: str
-    ) -> bool:
+    def update(self, condition: dict, newValue: dict, indexName: str, knowledgebaseId: str) -> bool:
         # if 'position_int' in newValue:
         #     logger.info(f"update position_int: {newValue['position_int']}")
         inf_conn = self.connPool.get_conn()
         db_instance = inf_conn.get_database(self.dbName)
         table_name = f"{indexName}_{knowledgebaseId}"
         table_instance = db_instance.get_table(table_name)
-        #if "exists" in condition:
+        # if "exists" in condition:
         #    del condition["exists"]
-        
+
         clmns = {}
         if table_instance:
             for n, ty, de, _ in table_instance.show_columns().rows():
@@ -580,14 +657,45 @@ class InfinityConnection(DocStoreConnection):
         filter = equivalent_condition_to_str(condition, table_instance)
         removeValue = {}
         for k, v in list(newValue.items()):
-            if field_keyword(k):
+            if k == "docnm_kwd":
+                newValue["docnm"] = list2str(v)
+            elif k == "title_kwd":
+                if not newValue.get("docnm_kwd"):
+                    newValue["docnm"] = list2str(v)
+            elif k == "title_sm_tks":
+                if not newValue.get("docnm_kwd"):
+                    newValue["docnm"] = v
+            elif k == "important_kwd":
+                newValue["important_keywords"] = list2str(v)
+            elif k == "important_tks":
+                if not newValue.get("important_kwd"):
+                    newValue["important_keywords"] = v
+            elif k == "content_with_weight":
+                newValue["content"] = v
+            elif k == "content_ltks":
+                if not newValue.get("content_with_weight"):
+                    newValue["content"] = v
+            elif k == "content_sm_ltks":
+                if not newValue.get("content_with_weight"):
+                    newValue["content"] = v
+            elif k == "authors_tks":
+                newValue["authors"] = v
+            elif k == "authors_sm_tks":
+                if not newValue.get("authors_tks"):
+                    newValue["authors"] = v
+            elif k == "question_kwd":
+                newValue["questions"] = "\n".join(v)
+            elif k == "question_tks":
+                if not newValue.get("question_kwd"):
+                    newValue["questions"] = list2str(v)
+            elif field_keyword(k):
                 if isinstance(v, list):
                     newValue[k] = "###".join(v)
                 else:
                     newValue[k] = v
             elif re.search(r"_feas$", k):
                 newValue[k] = json.dumps(v)
-            elif k == 'kb_id':
+            elif k == "kb_id":
                 if isinstance(newValue[k], list):
                     newValue[k] = newValue[k][0]  # since d[k] is a list, but we need a str
             elif k == "position_int":
@@ -611,13 +719,16 @@ class InfinityConnection(DocStoreConnection):
                     del newValue[k]
             else:
                 newValue[k] = v
-                
-        remove_opt = {}     # "[k,new_value]": [id_to_update, ...]
+        for k in ["docnm_kwd", "title_tks", "title_sm_tks", "important_kwd", "important_tks", "content_with_weight", "content_ltks", "content_sm_ltks", "authors_tks", "authors_sm_tks", "question_kwd", "question_tks"]:
+            if k in newValue:
+                del newValue[k]
+
+        remove_opt = {}  # "[k,new_value]": [id_to_update, ...]
         if removeValue:
             col_to_remove = list(removeValue.keys())
-            row_to_opt = table_instance.output(col_to_remove + ['id']).filter(filter).to_df()
+            row_to_opt = table_instance.output(col_to_remove + ["id"]).filter(filter).to_df()
             logger.debug(f"INFINITY search table {str(table_name)}, filter {filter}, result: {str(row_to_opt[0])}")
-            row_to_opt = self.getFields(row_to_opt, col_to_remove)
+            row_to_opt = self.get_fields(row_to_opt, col_to_remove)
             for id, old_v in row_to_opt.items():
                 for k, remove_v in removeValue.items():
                     if remove_v in old_v[k]:
@@ -632,8 +743,8 @@ class InfinityConnection(DocStoreConnection):
         logger.debug(f"INFINITY update table {table_name}, filter {filter}, newValue {newValue}.")
         for update_kv, ids in remove_opt.items():
             k, v = json.loads(update_kv)
-            table_instance.update(filter + " AND id in ({0})".format(",".join([f"'{id}'" for id in ids])), {k:"###".join(v)})
-                
+            table_instance.update(filter + " AND id in ({0})".format(",".join([f"'{id}'" for id in ids])), {k: "###".join(v)})
+
         table_instance.update(filter, newValue)
         self.connPool.release_conn(inf_conn)
         return True
@@ -645,9 +756,7 @@ class InfinityConnection(DocStoreConnection):
         try:
             table_instance = db_instance.get_table(table_name)
         except Exception:
-            logger.warning(
-                f"Skipped deleting from table {table_name} since the table doesn't exist."
-            )
+            logger.warning(f"Skipped deleting from table {table_name} since the table doesn't exist.")
             return 0
         filter = equivalent_condition_to_str(condition, table_instance)
         logger.debug(f"INFINITY delete table {table_name}, filter {filter}.")
@@ -659,56 +768,84 @@ class InfinityConnection(DocStoreConnection):
     Helper functions for search result
     """
 
-    def getTotal(self, res: tuple[pd.DataFrame, int] | pd.DataFrame) -> int:
+    def get_total(self, res: tuple[pd.DataFrame, int] | pd.DataFrame) -> int:
         if isinstance(res, tuple):
             return res[1]
         return len(res)
 
-    def getChunkIds(self, res: tuple[pd.DataFrame, int] | pd.DataFrame) -> list[str]:
+    def get_chunk_ids(self, res: tuple[pd.DataFrame, int] | pd.DataFrame) -> list[str]:
         if isinstance(res, tuple):
             res = res[0]
         return list(res["id"])
 
-    def getFields(self, res: tuple[pd.DataFrame, int] | pd.DataFrame, fields: list[str]) -> dict[str, dict]:
+    def get_fields(self, res: tuple[pd.DataFrame, int] | pd.DataFrame, fields: list[str]) -> dict[str, dict]:
         if isinstance(res, tuple):
             res = res[0]
         if not fields:
             return {}
         fieldsAll = fields.copy()
-        fieldsAll.append('id')
+        fieldsAll.append("id")
+        fieldsAll = set(fieldsAll)
+        if "docnm" in res.columns:
+            for field in ["docnm_kwd", "title_tks", "title_sm_tks"]:
+                if field in fieldsAll:
+                    res[field] = res["docnm"]
+        if "important_keywords" in res.columns:
+            if "important_kwd" in fieldsAll:
+                res["important_kwd"] = res["important_keywords"].apply(lambda v: v.split())
+            if "important_tks" in fieldsAll:
+                res["important_tks"] = res["important_keywords"]
+        if "questions" in res.columns:
+            if "question_kwd" in fieldsAll:
+                res["question_kwd"] = res["questions"].apply(lambda v: v.splitlines())
+            if "question_tks" in fieldsAll:
+                res["question_tks"] = res["questions"]
+        if "content" in res.columns:
+            for field in ["content_with_weight", "content_ltks", "content_sm_ltks"]:
+                if field in fieldsAll:
+                    res[field] = res["content"]
+        if "authors" in res.columns:
+            for field in ["authors_tks", "authors_sm_tks"]:
+                if field in fieldsAll:
+                    res[field] = res["authors"]
+
         column_map = {col.lower(): col for col in res.columns}
-        matched_columns = {column_map[col.lower()]:col for col in set(fieldsAll) if col.lower() in column_map}
-        none_columns = [col for col in set(fieldsAll) if col.lower() not in column_map]
+        matched_columns = {column_map[col.lower()]: col for col in fieldsAll if col.lower() in column_map}
+        none_columns = [col for col in fieldsAll if col.lower() not in column_map]
 
         res2 = res[matched_columns.keys()]
         res2 = res2.rename(columns=matched_columns)
-        res2.drop_duplicates(subset=['id'], inplace=True)
+        res2.drop_duplicates(subset=["id"], inplace=True)
 
-        for column in res2.columns:
+        for column in list(res2.columns):
             k = column.lower()
             if field_keyword(k):
-                res2[column] = res2[column].apply(lambda v:[kwd for kwd in v.split("###") if kwd])
+                res2[column] = res2[column].apply(lambda v: [kwd for kwd in v.split("###") if kwd])
             elif re.search(r"_feas$", k):
                 res2[column] = res2[column].apply(lambda v: json.loads(v) if v else {})
             elif k == "position_int":
                 def to_position_int(v):
                     if v:
-                        arr = [int(hex_val, 16) for hex_val in v.split('_')]
-                        v = [arr[i:i + 5] for i in range(0, len(arr), 5)]
+                        arr = [int(hex_val, 16) for hex_val in v.split("_")]
+                        v = [arr[i : i + 5] for i in range(0, len(arr), 5)]
                     else:
                         v = []
                     return v
+
                 res2[column] = res2[column].apply(to_position_int)
             elif k in ["page_num_int", "top_int"]:
-                res2[column] = res2[column].apply(lambda v:[int(hex_val, 16) for hex_val in v.split('_')] if v else [])
+                res2[column] = res2[column].apply(lambda v: [int(hex_val, 16) for hex_val in v.split("_")] if v else [])
             else:
                 pass
+        for column in ["docnm", "important_keywords", "questions", "content", "authors"]:
+            if column in res2:
+                del res2[column]
         for column in none_columns:
             res2[column] = None
-        
+
         return res2.set_index("id").to_dict(orient="index")
 
-    def getHighlight(self, res: tuple[pd.DataFrame, int] | pd.DataFrame, keywords: list[str], fieldnm: str):
+    def get_highlight(self, res: tuple[pd.DataFrame, int] | pd.DataFrame, keywords: list[str], fieldnm: str):
         if isinstance(res, tuple):
             res = res[0]
         ans = {}
@@ -719,26 +856,38 @@ class InfinityConnection(DocStoreConnection):
         for i in range(num_rows):
             id = column_id[i]
             txt = res[fieldnm][i]
+            if re.search(r"<em>[^<>]+</em>", txt, flags=re.IGNORECASE | re.MULTILINE):
+                ans[id] = txt
+                continue
             txt = re.sub(r"[\r\n]", " ", txt, flags=re.IGNORECASE | re.MULTILINE)
             txts = []
             for t in re.split(r"[.?!;\n]", txt):
-                for w in keywords:
-                    t = re.sub(
-                        r"(^|[ .?/'\"\(\)!,:;-])(%s)([ .?/'\"\(\)!,:;-])"
-                        % re.escape(w),
-                        r"\1<em>\2</em>\3",
-                        t,
-                        flags=re.IGNORECASE | re.MULTILINE,
-                    )
-                if not re.search(
-                        r"<em>[^<>]+</em>", t, flags=re.IGNORECASE | re.MULTILINE
-                ):
+                if is_english([t]):
+                    for w in keywords:
+                        t = re.sub(
+                            r"(^|[ .?/'\"\(\)!,:;-])(%s)([ .?/'\"\(\)!,:;-])" % re.escape(w),
+                            r"\1<em>\2</em>\3",
+                            t,
+                            flags=re.IGNORECASE | re.MULTILINE,
+                        )
+                else:
+                    for w in sorted(keywords, key=len, reverse=True):
+                        t = re.sub(
+                            re.escape(w),
+                            f"<em>{w}</em>",
+                            t,
+                            flags=re.IGNORECASE | re.MULTILINE,
+                        )
+                if not re.search(r"<em>[^<>]+</em>", t, flags=re.IGNORECASE | re.MULTILINE):
                     continue
                 txts.append(t)
-            ans[id] = "...".join(txts)
+            if txts:
+                ans[id] = "...".join(txts)
+            else:
+                ans[id] = txt
         return ans
 
-    def getAggregation(self, res: tuple[pd.DataFrame, int] | pd.DataFrame, fieldnm: str):
+    def get_aggregation(self, res: tuple[pd.DataFrame, int] | pd.DataFrame, fieldnm: str):
         """
         Manual aggregation for tag fields since Infinity doesn't provide native aggregation
         """

@@ -1,17 +1,18 @@
+import showMessage from '@/components/ui/message';
 import { MessageType } from '@/constants/chat';
 import {
   useHandleMessageInputChange,
   useSendMessageWithSse,
 } from '@/hooks/logic-hooks';
 import { useGetChatSearchParams } from '@/hooks/use-chat-request';
-import { IAnswer, Message } from '@/interfaces/database/chat';
+import { IAnswer, IMessage, Message } from '@/interfaces/database/chat';
 import api from '@/utils/api';
 import { buildMessageUuid } from '@/utils/chat';
 import { trim } from 'lodash';
 import { useCallback, useEffect, useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { IMessage } from '../chat/interface';
 import { useBuildFormRefs } from './use-build-form-refs';
+import { useCreateConversationBeforeSendMessage } from './use-chat-url';
 import { useUploadFile } from './use-upload-file';
 
 export function useSendMultipleChatMessage(
@@ -29,14 +30,14 @@ export function useSendMultipleChatMessage(
     api.completeConversation,
   );
 
-  const { handleUploadFile, fileIds, clearFileIds } = useUploadFile();
+  const { handleUploadFile, isUploading, files, clearFiles, removeFile } =
+    useUploadFile();
+
+  const { createConversationBeforeSendMessage } =
+    useCreateConversationBeforeSendMessage();
 
   const { setFormRef, getLLMConfigById, isLLMConfigEmpty } =
     useBuildFormRefs(chatBoxIds);
-
-  const stopOutputMessage = useCallback(() => {
-    controller.abort();
-  }, [controller]);
 
   const addNewestQuestion = useCallback(
     (message: Message, answer: string = '') => {
@@ -159,7 +160,7 @@ export function useSendMultipleChatMessage(
       if (res && (res?.response.status !== 200 || res?.data?.code !== 0)) {
         // cancel loading
         setValue(message.content);
-        console.info('removeLatestMessage111');
+        showMessage.error(res.data.message);
         removeLatestMessage(chatBoxId);
       }
     },
@@ -174,9 +175,17 @@ export function useSendMultipleChatMessage(
     ],
   );
 
-  const handlePressEnter = useCallback(() => {
+  const handlePressEnter = useCallback(async () => {
     if (trim(value) === '') return;
     const id = uuid();
+
+    const data = await createConversationBeforeSendMessage(value);
+
+    if (data === undefined) {
+      return;
+    }
+
+    const { targetConversationId, currentMessages } = data;
 
     chatBoxIds.forEach((chatBoxId) => {
       if (!isLLMConfigEmpty(chatBoxId)) {
@@ -185,7 +194,8 @@ export function useSendMultipleChatMessage(
           id,
           role: MessageType.User,
           chatBoxId,
-          doc_ids: fileIds,
+          files,
+          conversationId: targetConversationId,
         });
       }
     });
@@ -199,22 +209,26 @@ export function useSendMultipleChatMessage(
               id,
               content: value.trim(),
               role: MessageType.User,
-              doc_ids: fileIds,
+              files,
+              conversationId: targetConversationId,
             },
             chatBoxId,
+            currentConversationId: targetConversationId,
+            messages: currentMessages,
           });
         }
       });
     }
-    clearFileIds();
+    clearFiles();
   }, [
     value,
+    createConversationBeforeSendMessage,
     chatBoxIds,
     allDone,
-    clearFileIds,
+    clearFiles,
     isLLMConfigEmpty,
     addNewestQuestion,
-    fileIds,
+    files,
     setValue,
     sendMessage,
   ]);
@@ -235,9 +249,10 @@ export function useSendMultipleChatMessage(
     sendMessage,
     handleInputChange,
     handlePressEnter,
-    stopOutputMessage,
     sendLoading: !allDone,
     setFormRef,
     handleUploadFile,
+    isUploading,
+    removeFile,
   };
 }

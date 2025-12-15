@@ -1,5 +1,5 @@
-import { useFetchTokenListBeforeOtherStep } from '@/components/embed-dialog/use-show-embed-dialog';
-import HightLightMarkdown from '@/components/highlight-markdown';
+import HighLightMarkdown from '@/components/highlight-markdown';
+import message from '@/components/ui/message';
 import { Modal } from '@/components/ui/modal/modal';
 import { RAGFlowSelect } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -8,8 +8,7 @@ import {
   LanguageAbbreviationMap,
 } from '@/constants/common';
 import { useTranslate } from '@/hooks/common-hooks';
-import { message } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 type IEmbedAppModalProps = {
   open: any;
@@ -18,17 +17,13 @@ type IEmbedAppModalProps = {
   from: string;
   setOpen: (e: any) => void;
   tenantId: string;
+  beta?: string;
 };
 
 const EmbedAppModal = (props: IEmbedAppModalProps) => {
   const { t } = useTranslate('search');
-  const { open, setOpen, token = '', from, url, tenantId } = props;
-  const { beta, handleOperate } = useFetchTokenListBeforeOtherStep();
-  useEffect(() => {
-    if (open && !beta) {
-      handleOperate();
-    }
-  }, [handleOperate, open, beta]);
+  const { open, setOpen, token = '', from, url, tenantId, beta = '' } = props;
+
   const [hideAvatar, setHideAvatar] = useState(false);
   const [locale, setLocale] = useState('');
 
@@ -107,7 +102,7 @@ const EmbedAppModal = (props: IEmbedAppModalProps) => {
           </label>
           {/* <div className=" border rounded-lg"> */}
           {/* <pre className="text-sm whitespace-pre-wrap">{text}</pre> */}
-          <HightLightMarkdown>{text}</HightLightMarkdown>
+          <HighLightMarkdown>{text}</HighLightMarkdown>
           {/* </div> */}
         </div>
 

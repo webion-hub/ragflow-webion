@@ -1,7 +1,8 @@
 import { LlmModelType } from '@/constants/knowledge';
-import { useComposeLlmOptionsByModelTypes } from '@/hooks/llm-hooks';
+import { useComposeLlmOptionsByModelTypes } from '@/hooks/use-llm-request';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { forwardRef, memo, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { LlmSettingFieldItems } from '../llm-setting-items/next';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Select, SelectTrigger, SelectValue } from '../ui/select';
@@ -13,18 +14,19 @@ export interface NextInnerLLMSelectProps {
   onChange?: (value: string) => void;
   disabled?: boolean;
   filter?: string;
-  showTTSModel?: boolean;
+  showSpeech2TextModel?: boolean;
 }
 
 const NextInnerLLMSelect = forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   NextInnerLLMSelectProps
->(({ value, disabled, filter, showTTSModel = false }, ref) => {
+>(({ value, disabled, filter, showSpeech2TextModel = false }, ref) => {
+  const { t } = useTranslation();
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
   const ttsModel = useMemo(() => {
-    return showTTSModel ? [LlmModelType.TTS] : [];
-  }, [showTTSModel]);
+    return showSpeech2TextModel ? [LlmModelType.Speech2text] : [];
+  }, [showSpeech2TextModel]);
 
   const modelTypes = useMemo(() => {
     if (filter === LlmModelType.Chat) {
@@ -49,7 +51,7 @@ const NextInnerLLMSelect = forwardRef<
             }}
             ref={ref}
           >
-            <SelectValue>
+            <SelectValue placeholder={t('common.pleaseSelect')}>
               {
                 modelOptions
                   .flatMap((x) => x.options)

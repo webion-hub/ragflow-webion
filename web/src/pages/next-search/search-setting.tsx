@@ -1,7 +1,15 @@
 // src/pages/next-search/search-setting.tsx
 
-import { Input } from '@/components/originui/input';
-import { RAGFlowAvatar } from '@/components/ragflow-avatar';
+import { AvatarUpload } from '@/components/avatar-upload';
+import {
+  LlmSettingFieldItems,
+  LlmSettingSchema,
+} from '@/components/llm-setting-items/next';
+import {
+  MetadataFilter,
+  MetadataFilterSchema,
+} from '@/components/metadata-filter';
+import { SimilaritySliderFormField } from '@/components/similarity-slider';
 import { Button } from '@/components/ui/button';
 import { SingleFormSlider } from '@/components/ui/dual-range-slider';
 import {
@@ -12,42 +20,40 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import {
   MultiSelect,
   MultiSelectOptionType,
 } from '@/components/ui/multi-select';
 import { RAGFlowSelect } from '@/components/ui/select';
+import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
-import { useFetchKnowledgeList } from '@/hooks/knowledge-hooks';
+import { Textarea } from '@/components/ui/textarea';
+import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
 import {
   useComposeLlmOptionsByModelTypes,
   useSelectLlmOptionsByModelType,
-} from '@/hooks/llm-hooks';
-import { useFetchTenantInfo } from '@/hooks/user-setting-hooks';
+} from '@/hooks/use-llm-request';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { IKnowledge } from '@/interfaces/database/knowledge';
 import { cn } from '@/lib/utils';
-import { transformFile2Base64 } from '@/utils/file-util';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Pencil, Upload, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
-import {
-  LlmModelType,
-  ModelVariableType,
-  settledModelVariableMap,
-} from '../dataset/dataset/constant';
+import { LlmModelType } from '../dataset/dataset/constant';
 import {
   ISearchAppDetailProps,
   IUpdateSearchProps,
   IllmSettingProps,
   useUpdateSearch,
 } from '../next-searches/hooks';
-import {
-  LlmSettingFieldItems,
-  LlmSettingSchema,
-} from './search-setting-aisummery-config';
+// import {
+//   LlmSettingFieldItems,
+//   LlmSettingSchema,
+// } from './search-setting-aisummery-config';
 
 interface SearchSettingProps {
   open: boolean;
@@ -64,7 +70,7 @@ const SearchSettingFormSchema = z
     description: z.string().optional(),
     search_config: z.object({
       kb_ids: z.array(z.string()).min(1, 'At least one dataset is required'),
-      vector_similarity_weight: z.number().min(0).max(100),
+      vector_similarity_weight: z.number().min(0).max(1),
       web_search: z.boolean(),
       similarity_threshold: z.number(),
       use_kg: z.boolean(),
@@ -75,6 +81,7 @@ const SearchSettingFormSchema = z
       llm_setting: z.object(LlmSettingSchema),
       related_search: z.boolean(),
       query_mindmap: z.boolean(),
+      ...MetadataFilterSchema,
     }),
   })
   .superRefine((data, ctx) => {
@@ -108,12 +115,10 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
     resolver: zodResolver(SearchSettingFormSchema),
   });
 
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarBase64Str, setAvatarBase64Str] = useState(''); // Avatar Image base64
   const [datasetList, setDatasetList] = useState<MultiSelectOptionType[]>([]);
   const [datasetSelectEmbdId, setDatasetSelectEmbdId] = useState('');
-  const descriptionDefaultValue = 'You are an intelligent assistant.';
   const { t } = useTranslation();
+  const descriptionDefaultValue = t('search.descriptionValue');
   const resetForm = useCallback(() => {
     formMethods.reset({
       search_id: data?.id,
@@ -128,30 +133,20 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
             : 0.3) || 0.3,
         web_search: search_config?.web_search || false,
         doc_ids: [],
-        similarity_threshold: 0.0,
+        similarity_threshold: search_config?.similarity_threshold || 0.2,
         use_kg: false,
         rerank_id: search_config?.rerank_id || '',
         use_rerank: search_config?.rerank_id ? true : false,
         top_k: search_config?.top_k || 1024,
         summary: search_config?.summary || false,
-        chat_id: '',
+        chat_id: search_config?.chat_id || '',
         llm_setting: {
-          llm_id: llm_setting?.llm_id || '',
-          parameter: llm_setting?.parameter || ModelVariableType.Improvise,
-          temperature:
-            llm_setting?.temperature ||
-            settledModelVariableMap[ModelVariableType.Improvise].temperature,
-          top_p:
-            llm_setting?.top_p ||
-            settledModelVariableMap[ModelVariableType.Improvise].top_p,
-          frequency_penalty:
-            llm_setting?.frequency_penalty ||
-            settledModelVariableMap[ModelVariableType.Improvise]
-              .frequency_penalty,
-          presence_penalty:
-            llm_setting?.presence_penalty ||
-            settledModelVariableMap[ModelVariableType.Improvise]
-              .presence_penalty,
+          llm_id: search_config?.chat_id || '',
+          parameter: llm_setting?.parameter,
+          temperature: llm_setting?.temperature || 0,
+          top_p: llm_setting?.top_p || 0,
+          frequency_penalty: llm_setting?.frequency_penalty || 0,
+          presence_penalty: llm_setting?.presence_penalty || 0,
           temperatureEnabled: llm_setting?.temperature ? true : false,
           topPEnabled: llm_setting?.top_p ? true : false,
           presencePenaltyEnabled: llm_setting?.presence_penalty ? true : false,
@@ -164,9 +159,10 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
         keyword: false,
         related_search: search_config?.related_search || false,
         query_mindmap: search_config?.query_mindmap || false,
+        meta_data_filter: search_config?.meta_data_filter,
       },
     });
-  }, [data, search_config, llm_setting, formMethods]);
+  }, [data, search_config, llm_setting, formMethods, descriptionDefaultValue]);
 
   useEffect(() => {
     resetForm();
@@ -181,19 +177,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
       setWidth0('w-[440px]');
     }
   }, [open]);
-  useEffect(() => {
-    if (!avatarFile) {
-      setAvatarBase64Str(data?.avatar);
-    }
-  }, [avatarFile, data?.avatar]);
-  useEffect(() => {
-    if (avatarFile) {
-      (async () => {
-        // make use of img compression transformFile2Base64
-        setAvatarBase64Str(await transformFile2Base64(avatarFile));
-      })();
-    }
-  }, [avatarFile]);
+
   const { list: datasetListOrigin } = useFetchKnowledgeList();
 
   useEffect(() => {
@@ -248,16 +232,23 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
   });
 
   const { updateSearch } = useUpdateSearch();
+  const [formSubmitLoading, setFormSubmitLoading] = useState(false);
   const { data: systemSetting } = useFetchTenantInfo();
   const onSubmit = async (
     formData: IUpdateSearchProps & { tenant_id: string },
   ) => {
     try {
+      setFormSubmitLoading(true);
       const { search_config, ...other_formdata } = formData;
-      const { llm_setting, vector_similarity_weight, ...other_config } =
-        search_config;
+      const {
+        llm_setting,
+        vector_similarity_weight,
+        use_rerank,
+        rerank_id,
+        ...other_config
+      } = search_config;
       const llmSetting = {
-        llm_id: llm_setting.llm_id,
+        // llm_id: llm_setting.llm_id,
         parameter: llm_setting.parameter,
         temperature: llm_setting.temperature,
         top_p: llm_setting.top_p,
@@ -265,37 +256,28 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
         presence_penalty: llm_setting.presence_penalty,
       } as IllmSettingProps;
 
-      if (!llm_setting.frequencyPenaltyEnabled) {
-        delete llmSetting.frequency_penalty;
-      }
-      if (!llm_setting.presencePenaltyEnabled) {
-        delete llmSetting.presence_penalty;
-      }
-      if (!llm_setting.temperatureEnabled) {
-        delete llmSetting.temperature;
-      }
-      if (!llm_setting.topPEnabled) {
-        delete llmSetting.top_p;
-      }
       await updateSearch({
         ...other_formdata,
         search_config: {
           ...other_config,
+          chat_id: llm_setting.llm_id,
           vector_similarity_weight: 1 - vector_similarity_weight,
+          rerank_id: use_rerank ? rerank_id : '',
           llm_setting: { ...llmSetting },
         },
         tenant_id: systemSetting.tenant_id,
-        avatar: avatarBase64Str,
       });
       setOpen(false);
     } catch (error) {
       console.error('Failed to update search:', error);
+    } finally {
+      setFormSubmitLoading(false);
     }
   };
   return (
     <div
       className={cn(
-        'text-text-primary border p-4 rounded-lg',
+        'text-text-primary border p-4 pb-12 rounded-lg',
         {
           'animate-fade-in-right': open,
           'animate-fade-out-right': !open,
@@ -345,70 +327,20 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 </FormItem>
               )}
             />
-
             {/* Avatar */}
             <FormField
               control={formMethods.control}
               name="avatar"
-              render={() => (
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('search.avatar')}</FormLabel>
                   <FormControl>
-                    <div className="relative group flex items-end gap-2">
-                      <div>
-                        {!avatarBase64Str ? (
-                          <div className="w-[64px] h-[64px] grid place-content-center border border-dashed	rounded-md">
-                            <div className="flex flex-col items-center">
-                              <Upload />
-                              <p>{t('common.upload')}</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="w-[64px] h-[64px] relative grid place-content-center">
-                            <RAGFlowAvatar
-                              avatar={avatarBase64Str}
-                              name={data.name}
-                              className="w-[64px] h-[64px] rounded-md block"
-                            />
-                            <div className="absolute inset-0 bg-[#000]/20 group-hover:bg-[#000]/60">
-                              <Pencil
-                                size={20}
-                                className="absolute right-2 bottom-0 opacity-50 hidden group-hover:block"
-                              />
-                            </div>
-                          </div>
-                        )}
-                        <input
-                          placeholder=""
-                          // {...field}
-                          type="file"
-                          title=""
-                          accept="image/*"
-                          className="absolute w-[64px] top-0 left-0 h-full opacity-0 cursor-pointer"
-                          onChange={(ev) => {
-                            const file = ev.target?.files?.[0];
-                            if (
-                              /\.(jpg|jpeg|png|webp|bmp)$/i.test(
-                                file?.name ?? '',
-                              )
-                            ) {
-                              setAvatarFile(file!);
-                            }
-                            ev.target.value = '';
-                          }}
-                        />
-                      </div>
-
-                      <div className="margin-1 text-muted-foreground">
-                        {t('knowledgeConfiguration.photoTip')}
-                      </div>
-                    </div>
+                    <AvatarUpload {...field}></AvatarUpload>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
             {/* Description */}
             <FormField
               control={formMethods.control}
@@ -417,8 +349,8 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 <FormItem>
                   <FormLabel>{t('search.description')}</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="You are an intelligent assistant."
+                    <Textarea
+                      placeholder={descriptionDefaultValue}
                       {...field}
                       onFocus={() => {
                         if (field.value === descriptionDefaultValue) {
@@ -436,7 +368,6 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 </FormItem>
               )}
             />
-
             {/* Datasets */}
             <FormField
               control={formMethods.control}
@@ -448,7 +379,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                     <span className="text-destructive mr-1"> *</span>
                     {t('search.datasets')}
                   </FormLabel>
-                  <FormControl>
+                  <FormControl className="bg-bg-input">
                     <MultiSelect
                       options={datasetList}
                       onValueChange={(value) => {
@@ -456,7 +387,6 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                       }}
                       showSelectAll={false}
                       placeholder={t('chat.knowledgeBasesMessage')}
-                      variant="inverted"
                       maxCount={10}
                       defaultValue={field.value}
                       {...field}
@@ -466,47 +396,13 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 </FormItem>
               )}
             />
-
-            {/* Keyword Similarity Weight */}
-            <FormField
-              control={formMethods.control}
-              name="search_config.vector_similarity_weight"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    <span className="text-destructive mr-1"> *</span>Keyword
-                    Similarity Weight
-                  </FormLabel>
-                  <div
-                    className={cn(
-                      'flex items-center gap-4 justify-between',
-                      className,
-                    )}
-                  >
-                    <FormControl>
-                      <SingleFormSlider
-                        {...field}
-                        max={1}
-                        min={0}
-                        step={0.01}
-                      ></SingleFormSlider>
-                    </FormControl>
-                    <FormControl>
-                      <Input
-                        type={'number'}
-                        className="h-7 w-20 bg-bg-card"
-                        max={1}
-                        min={0}
-                        step={0.01}
-                        {...field}
-                      ></Input>
-                    </FormControl>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
+            <MetadataFilter prefix="search_config."></MetadataFilter>
+            <SimilaritySliderFormField
+              isTooltipShown
+              similarityName="search_config.similarity_threshold"
+              vectorSimilarityWeightName="search_config.vector_similarity_weight"
+              numberInputClassName="rounded-sm"
+            ></SimilaritySliderFormField>
             {/* Rerank Model */}
             <FormField
               control={formMethods.control}
@@ -532,14 +428,16 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>
-                        <span className="text-destructive mr-1"> *</span>Model
+                        <span className="text-destructive mr-1"> *</span>
+                        {t('chat.model')}
                       </FormLabel>
                       <FormControl>
                         <RAGFlowSelect
                           {...field}
                           options={rerankModelOptions}
+                          triggerClassName={'bg-bg-input'}
                           // disabled={disabled}
-                          placeholder={'model'}
+                          placeholder={t('chat.model')}
                         />
                       </FormControl>
                       <FormMessage />
@@ -568,7 +466,8 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                         </FormControl>
                         <FormControl>
                           <Input
-                            className="h-7 w-20 bg-bg-card"
+                            type={'number'}
+                            className="h-7 w-20 bg-bg-card border border-border-button rounded-sm"
                             max={2048}
                             min={0}
                             step={1}
@@ -582,7 +481,6 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 />
               </>
             )}
-
             {/* AI Summary */}
             <FormField
               control={formMethods.control}
@@ -599,16 +497,24 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 </FormItem>
               )}
             />
-
             {aiSummaryDisabled && (
+              // <LlmSettingFieldItems
+              //   prefix="search_config.llm_setting"
+              //   options={aiSummeryModelOptions}
+              // ></LlmSettingFieldItems>
               <LlmSettingFieldItems
                 prefix="search_config.llm_setting"
                 options={aiSummeryModelOptions}
+                showFields={[
+                  'temperature',
+                  'top_p',
+                  'presence_penalty',
+                  'frequency_penalty',
+                ]}
               ></LlmSettingFieldItems>
             )}
-
             {/* Feature Controls */}
-            <FormField
+            {/* <FormField
               control={formMethods.control}
               name="search_config.web_search"
               render={({ field }) => (
@@ -622,7 +528,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   <FormLabel>{t('search.enableWebSearch')}</FormLabel>
                 </FormItem>
               )}
-            />
+            /> */}
 
             <FormField
               control={formMethods.control}
@@ -639,7 +545,6 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 </FormItem>
               )}
             />
-
             <FormField
               control={formMethods.control}
               name="search_config.query_mindmap"
@@ -657,7 +562,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
             />
             {/* Submit Button */}
             <div className="flex justify-end"></div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 absolute bottom-1 right-3 bg-bg-base w-[calc(100%-1em)] py-2">
               <Button
                 type="reset"
                 variant={'transparent'}
@@ -666,9 +571,16 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   setOpen(false);
                 }}
               >
-                {t('modal.cancelText')}
+                {t('search.cancelText')}
               </Button>
-              <Button type="submit">{t('modal.okText')}</Button>
+              <Button type="submit" disabled={formSubmitLoading}>
+                {formSubmitLoading && (
+                  <div className="size-4">
+                    <Spin size="small" />
+                  </div>
+                )}
+                {t('search.okText')}
+              </Button>
             </div>
           </form>
         </Form>

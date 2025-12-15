@@ -1,4 +1,4 @@
-import HightLightMarkdown from '@/components/highlight-markdown';
+import HighLightMarkdown from '@/components/highlight-markdown';
 import {
   Timeline,
   TimelineContent,
@@ -23,7 +23,7 @@ import { ITraceData } from '@/interfaces/database/agent';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import { get, isEmpty, isEqual, uniqWith } from 'lodash';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import JsonView from 'react18-json-view';
 import { Operator } from '../constant';
 import { useCacheChatLog } from '../hooks/use-cache-chat-log';
@@ -116,12 +116,12 @@ export const WorkFlowTimeline = ({
   isShare,
 }: LogFlowTimelineProps) => {
   // const getNode = useGraphStore((state) => state.getNode);
-  const [isStopFetchTrace, setISStopFetchTrace] = useState(false);
 
-  const { data: traceData, setMessageId } = useFetchMessageTrace(
-    isStopFetchTrace,
-    canvasId,
-  );
+  const {
+    data: traceData,
+    setMessageId,
+    setISStopFetchTrace,
+  } = useFetchMessageTrace(canvasId);
 
   useEffect(() => {
     setMessageId(currentMessageId);
@@ -133,7 +133,7 @@ export const WorkFlowTimeline = ({
 
   useEffect(() => {
     setISStopFetchTrace(!sendLoading);
-  }, [sendLoading]);
+  }, [sendLoading, setISStopFetchTrace]);
 
   const startedNodeList = useMemo(() => {
     const finish = currentEventListWithoutMessage?.some(
@@ -151,7 +151,23 @@ export const WorkFlowTimeline = ({
       }
       return pre;
     }, []);
-  }, [currentEventListWithoutMessage, sendLoading]);
+  }, [currentEventListWithoutMessage, sendLoading, setISStopFetchTrace]);
+
+  const getElapsedTime = (nodeId: string) => {
+    if (nodeId === 'begin') {
+      return '';
+    }
+    const data = currentEventListWithoutMessage?.find((x) => {
+      return (
+        x.data.component_id === nodeId &&
+        x.event === MessageEventType.NodeFinished
+      );
+    });
+    if (!data || data?.data.elapsed_time < 0.000001) {
+      return '';
+    }
+    return data?.data.elapsed_time || '';
+  };
 
   const hasTrace = useCallback(
     (componentId: string) => {
@@ -272,7 +288,10 @@ export const WorkFlowTimeline = ({
                                 nodeLabel)}
                           </span>
                           <span className="text-text-secondary text-xs">
-                            {x.data.elapsed_time?.toString().slice(0, 6)}
+                            {getElapsedTime(x.data.component_id)
+                              .toString()
+                              .slice(0, 6)}
+                            {getElapsedTime(x.data.component_id) ? 's' : ''}
                           </span>
                           <span
                             className={cn(
@@ -308,9 +327,9 @@ export const WorkFlowTimeline = ({
                         <AccordionContent>
                           <div className="space-y-2">
                             <div className="w-full h-[200px] break-words overflow-auto scrollbar-auto p-2 bg-muted">
-                              <HightLightMarkdown>
+                              <HighLightMarkdown>
                                 {x.data.thoughts || ''}
-                              </HightLightMarkdown>
+                              </HighLightMarkdown>
                             </div>
                           </div>
                         </AccordionContent>

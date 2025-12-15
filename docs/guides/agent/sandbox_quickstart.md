@@ -23,10 +23,12 @@ The architecture consists of isolated Docker base images for each supported lang
 
 - Linux distribution compatible with gVisor.
 - gVisor installed and configured.
-- Docker version 24.0.0 or higher.
+- Docker version 25.0 or higher (API 1.44+). The executor manager image now ships Docker CLI `29.1.0` to stay compatible with newer Docker daemons.
 - Docker Compose version 2.26.1 or higher (similar to RAGFlow requirements).
 - uv package and project manager installed.
 - (Optional) GNU Make for simplified command-line management.
+
+> **Note:** If you see `client version 1.43 is too old. Minimum supported API version is 1.44`, pull the latest `infiniflow/sandbox-executor-manager:latest` from Docker Hub (or rebuild `./sandbox/executor_manager`). Older images embedded Docker 24.x, which cannot talk to upgraded Docker daemons.
 
 ## Build Docker base images
 
@@ -62,9 +64,9 @@ docker build -t sandbox-executor-manager:latest ./executor_manager
 
 3. Add the following entry to your /etc/hosts file to resolve the executor manager service:
 
-```bash
-127.0.0.1 es01 infinity mysql minio redis sandbox-executor-manager
-```
+    ```bash
+    127.0.0.1 es01 infinity mysql minio redis sandbox-executor-manager
+    ```
 
 4. Start the RAGFlow service as usual.
 
@@ -74,24 +76,24 @@ docker build -t sandbox-executor-manager:latest ./executor_manager
 
 1. Initialize the environment variables:
 
-```bash
-cp .env.example .env
-```
+    ```bash
+    cp .env.example .env
+    ```
 
 2. Launch the sandbox services with Docker Compose:
 
-```bash
-docker compose -f docker-compose.yml up
-```
+    ```bash
+    docker compose -f docker-compose.yml up
+    ```
 
 3. Test the sandbox setup:
 
-```bash
-source .venv/bin/activate
-export PYTHONPATH=$(pwd)
-uv pip install -r executor_manager/requirements.txt
-uv run tests/sandbox_security_tests_full.py
-```
+    ```bash
+    source .venv/bin/activate
+    export PYTHONPATH=$(pwd)
+    uv pip install -r executor_manager/requirements.txt
+    uv run tests/sandbox_security_tests_full.py
+    ```
 
 ### Using Makefile
 

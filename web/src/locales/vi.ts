@@ -558,6 +558,10 @@ export default {
       baseUrl: 'Base-Url',
       baseUrlTip:
         'Nếu khóa API của bạn từ OpenAI, chỉ cần bỏ qua nó. Bất kỳ nhà cung cấp trung gian nào khác sẽ cung cấp URL cơ sở này với khóa API.',
+      minimaxBaseUrlTip:
+        'Chỉ người dùng quốc tế: dùng https://api.minimax.io/v1.',
+      minimaxBaseUrlPlaceholder:
+        '(Chỉ dành cho người dùng quốc tế, điền https://api.minimax.io/v1)',
       modify: 'Sửa đổi',
       systemModelSettings: 'Đặt mô hình mặc định',
       chatModel: 'Mô hình trò chuyện',
@@ -817,12 +821,31 @@ export default {
       baiduDescription: `Thành phần này được sử dụng để lấy kết quả tìm kiếm từ www.baidu.com. Thông thường, nó hoạt động như một phần bổ sung cho các cơ sở kiến thức. Top N chỉ định số lượng kết quả tìm kiếm bạn cần điều chỉnh.`,
       duckDuckGo: 'DuckDuckGo',
       duckDuckGoDescription:
-        'Một thành phần truy xuất kết quả tìm kiếm từ duckduckgo.com, với TopN xác định số lượng kết quả tìm kiếm. Nó bổ sung cho các cơ sở kiến thức hiện có.',
-      channel: 'Kênh',
-      channelTip: `Thực hiện tìm kiếm văn bản hoặc tìm kiếm tin tức trên đầu vào của thành phần`,
-      text: 'Văn bản',
-      news: 'Tin tức',
-      messageHistoryWindowSize: 'Cửa sổ lịch sử tin nhắn',
+        'Một thành phần tìm kiếm trên duckduckgo.com, cho phép bạn chỉ định số lượng kết quả tìm kiếm sử dụng TopN. Nó bổ sung cho các cơ sở kiến thức hiện có.',
+      searXNG: 'SearXNG',
+      searXNGDescription:
+        'Một thành phần tìm kiếm thông qua URL phiên bản SearXNG bạn cung cấp. Chỉ định TopN và URL phiên bản.',
+      pdfGenerator: 'Trình tạo Tài liệu',
+      pDFGenerator: 'Trình tạo Tài liệu',
+      pdfGeneratorDescription: `Một thành phần tạo tài liệu (PDF, DOCX, TXT) từ nội dung định dạng markdown với kiểu tùy chỉnh, hình ảnh và bảng. Hỗ trợ: **in đậm**, *in nghiêng*, # tiêu đề, - danh sách, bảng với cú pháp |.`,
+      pDFGeneratorDescription: `Một thành phần tạo tài liệu (PDF, DOCX, TXT) từ nội dung định dạng markdown với kiểu tùy chỉnh, hình ảnh và bảng. Hỗ trợ: **in đậm**, *in nghiêng*, # tiêu đề, - danh sách, bảng với cú pháp |.`,
+      subtitle: 'Phụ đề',
+      logoImage: 'Hình ảnh Logo',
+      logoPosition: 'Vị trí Logo',
+      logoWidth: 'Chiều rộng Logo',
+      logoHeight: 'Chiều cao Logo',
+      fontFamily: 'Họ phông chữ',
+      fontSize: 'Kích thước phông chữ',
+      titleFontSize: 'Kích thước phông chữ tiêu đề',
+      pageSize: 'Kích thước trang',
+      orientation: 'Hướng',
+      marginTop: 'Lề trên',
+      marginBottom: 'Lề dưới',
+      filename: 'Tên tệp',
+      outputDirectory: 'Thư mục đầu ra',
+      addPageNumbers: 'Thêm số trang',
+      addTimestamp: 'Thêm dấu thời gian',
+      watermarkText: 'Văn bản watermark',
       messageHistoryWindowSizeTip:
         'Kích thước cửa sổ lịch sử cuộc trò chuyện hiển thị với LLM. Càng lớn càng tốt, nhưng hãy chú ý đến giới hạn tối đa số token của LLM.',
       wikipedia: 'Wikipedia',
@@ -1125,6 +1148,8 @@ export default {
       cleanHtml: 'Làm sạch HTML',
       cleanHtmlTip:
         'Nếu phản hồi được định dạng HTML và chỉ muốn nội dung chính, hãy bật nó lên.',
+      invalidUrl:
+        'Phải là URL hợp lệ hoặc URL có chứa các biến theo định dạng {ten_bien} hoặc {thanh_phan@bien}',
       reference: 'Tham khảo',
       input: 'Đầu vào',
       output: 'Đầu ra',
