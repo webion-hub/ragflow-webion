@@ -98,6 +98,9 @@ async def login():
         return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="Unauthorized!")
 
     email = json_body.get("email", "")
+    if email == "admin@ragflow.io":
+        return get_json_result(data=False, code=RetCode.AUTHENTICATION_ERROR, message="Default admin account cannot be used to login normal services!")
+    
     users = UserService.query(email=email)
     if not users:
         return get_json_result(
@@ -657,7 +660,7 @@ def user_register(user_id, user):
     tenant_llm = get_init_tenant_llm(user_id)
 
     if not UserService.save(**user):
-        return
+        return None
     TenantService.insert(**tenant)
     UserTenantService.insert(**usr_tenant)
     TenantLLMService.insert_many(tenant_llm)

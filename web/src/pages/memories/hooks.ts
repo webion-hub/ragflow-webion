@@ -1,16 +1,23 @@
 // src/pages/next-memoryes/hooks.ts
 
+import { FilterCollection } from '@/components/list-filter-bar/interface';
+import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-filter-submit';
 import message from '@/components/ui/message';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useHandleSearchChange } from '@/hooks/logic-hooks';
-import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import memoryService, { updateMemoryById } from '@/services/memory-service';
+import {
+  buildOwnersFilter,
+  groupListByArray,
+  groupListByType,
+} from '@/utils/list-filter-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { omit } from 'lodash';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, useSearchParams } from 'umi';
+import { useParams, useSearchParams } from 'react-router';
 import {
   CreateMemoryResponse,
   DeleteMemoryProps,
@@ -25,41 +32,47 @@ import {
 export const useCreateMemory = () => {
   const { t } = useTranslation();
 
-  const {
-    data,
-    isError,
-    mutateAsync: createMemoryMutation,
-  } = useMutation<CreateMemoryResponse, Error, ICreateMemoryProps>({
-    mutationKey: ['createMemory'],
-    mutationFn: async (props) => {
+  const createMemory = useCallback(
+    async (props: ICreateMemoryProps): Promise<CreateMemoryResponse> => {
       const { data: response } = await memoryService.createMemory(props);
       if (response.code !== 0) {
         throw new Error(response.message || 'Failed to create memory');
       }
+      if (response.code === 0) {
+        message.success(t('message.created'));
+      }
       return response.data;
     },
-    onSuccess: () => {
-      message.success(t('message.created'));
-    },
-    onError: (error) => {
-      message.error(t('message.error', { error: error.message }));
-    },
-  });
-
-  const createMemory = useCallback(
-    (props: ICreateMemoryProps) => {
-      return createMemoryMutation(props);
-    },
-    [createMemoryMutation],
+    [t],
   );
 
-  return { data, isError, createMemory };
+  return { createMemory };
 };
 
 export const useFetchMemoryList = () => {
   const { handleInputChange, searchString, pagination, setPagination } =
     useHandleSearchChange();
+  const { filterValue, handleFilterSubmit } = useHandleFilterSubmit();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
+
+  const memoryType = Array.isArray(filterValue.memoryType)
+    ? filterValue.memoryType
+    : [];
+  const storageType = Array.isArray(filterValue.storageType)
+    ? filterValue.storageType
+    : [];
+  const owner = filterValue.owner;
+  const requestParams: Record<string, any> = {
+    keywords: debouncedSearchString,
+    page_size: pagination.pageSize,
+    page: pagination.current,
+    memory_type: memoryType.length > 0 ? memoryType.join(',') : undefined,
+    storage_type: storageType.length === 1 ? storageType[0] : undefined,
+  };
+
+  if (Array.isArray(owner) && owner.length > 0) {
+    requestParams.owner_ids = owner.join(',');
+  }
   const { data, isLoading, isError, refetch } = useQuery<
     MemoryListResponse,
     Error
@@ -70,16 +83,13 @@ export const useFetchMemoryList = () => {
         debouncedSearchString,
         ...pagination,
       },
+      filterValue,
     ],
     queryFn: async () => {
       const { data: response } = await memoryService.getMemoryList(
         {
-          data: {
-            keywords: debouncedSearchString,
-            page_size: pagination.pageSize,
-            page: pagination.current,
-          },
-          params: {},
+          params: requestParams,
+          data: { memory_type: memoryType },
         },
         true,
       );
@@ -107,6 +117,8 @@ export const useFetchMemoryList = () => {
     handleInputChange,
     setPagination,
     refetch,
+    filterValue,
+    handleFilterSubmit,
   };
 };
 
@@ -197,6 +209,7 @@ export const useUpdateMemory = () => {
       if (response.code !== 0) {
         throw new Error(response.message || 'Failed to update memory');
       }
+
       return response.data;
     },
     onSuccess: (data, variables) => {
@@ -222,7 +235,6 @@ export const useUpdateMemory = () => {
 
 export const useRenameMemory = () => {
   const [memory, setMemory] = useState<IMemory>({} as IMemory);
-  const { navigateToMemory } = useNavigatePage();
   const {
     visible: openCreateModal,
     hideModal: hideChatRenameModal,
@@ -231,15 +243,22 @@ export const useRenameMemory = () => {
   const { updateMemory } = useUpdateMemory();
   const { createMemory } = useCreateMemory();
   const [loading, setLoading] = useState(false);
+  const { data: tenantInfo } = useFetchTenantInfo();
 
   const handleShowChatRenameModal = useCallback(
     (record?: IMemory) => {
       if (record) {
-        setMemory(record);
+        const embd_id = record.embd_id || tenantInfo?.embd_id;
+        const llm_id = record.llm_id || tenantInfo?.llm_id;
+        setMemory({
+          ...record,
+          embd_id,
+          llm_id,
+        });
       }
       showChatRenameModal();
     },
-    [showChatRenameModal],
+    [showChatRenameModal, tenantInfo],
   );
 
   const handleHideModal = useCallback(() => {
@@ -249,19 +268,11 @@ export const useRenameMemory = () => {
 
   const onMemoryRenameOk = useCallback(
     async (data: ICreateMemoryProps, callBack?: () => void) => {
-      let res;
+      // let res;
       setLoading(true);
       if (memory?.id) {
         try {
-          // const reponse = await memoryService.getMemoryDetail({
-          //   id: memory?.id,
-          // });
-          // const detail = reponse.data?.data;
-          // console.log('detail-->', detail);
-
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          // const { id, created_by, update_time, ...memoryDataTemp } = detail;
-          res = await updateMemory({
+          await updateMemory({
             // ...memoryDataTemp,
             name: data.name,
             id: memory?.id,
@@ -270,7 +281,7 @@ export const useRenameMemory = () => {
           console.error('error', e);
         }
       } else {
-        res = await createMemory(data);
+        await createMemory(data);
       }
       // if (res && !memory?.id) {
       //   navigateToMemory(res?.id)();
@@ -279,7 +290,7 @@ export const useRenameMemory = () => {
       setLoading(false);
       handleHideModal();
     },
-    [memory, createMemory, handleHideModal, navigateToMemory, updateMemory],
+    [memory, createMemory, handleHideModal, updateMemory],
   );
   return {
     memoryRenameLoading: loading,
@@ -290,3 +301,35 @@ export const useRenameMemory = () => {
     showMemoryRenameModal: handleShowChatRenameModal,
   };
 };
+
+export function useSelectFilters() {
+  const { data: res } = useFetchMemoryList();
+  const data = res?.data;
+
+  const memoryType = useMemo(() => {
+    return groupListByArray(data?.memory_list ?? [], 'memory_type');
+  }, [data?.memory_list]);
+  const storageType = useMemo(() => {
+    return groupListByType(
+      data?.memory_list ?? [],
+      'storage_type',
+      'storage_type',
+    );
+  }, [data?.memory_list]);
+
+  const filters: FilterCollection[] = [
+    buildOwnersFilter(data?.memory_list ?? [], 'owner_name'),
+    {
+      field: 'memoryType',
+      list: memoryType,
+      label: 'Memory Type',
+    },
+    {
+      field: 'storageType',
+      list: storageType,
+      label: 'Storage Type',
+    },
+  ];
+
+  return { filters };
+}

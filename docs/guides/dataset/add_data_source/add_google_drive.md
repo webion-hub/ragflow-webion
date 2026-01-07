@@ -1,6 +1,9 @@
 ---
 sidebar_position: 3
 slug: /add_google_drive
+sidebar_custom_props: {
+  categoryIcon: SiGoogledrive
+}
 ---
 
 # Add Google Drive
@@ -10,9 +13,9 @@ slug: /add_google_drive
 You can either create a dedicated project for RAGFlow or use an existing
 Google Cloud external project.
 
-**Steps:** 
+**Steps:**
 1. Open the project creation page\
-`https://console.cloud.google.com/projectcreate` 
+`https://console.cloud.google.com/projectcreate`
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image1.jpeg?raw=true)
 2. Select **External** as the Audience
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image2.png?raw=true)
@@ -45,7 +48,7 @@ Google Cloud external project.
 http://localhost:9380/v1/connector/google-drive/oauth/web/callback
 ```
 
-### If using Docker deployment:
+- If using Docker deployment:
 
 **Authorized JavaScript origin:**
 ```
@@ -53,15 +56,16 @@ http://localhost:80
 ```
 
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image8.png?raw=true)
-### If running from source:
+
+- If running from source:
 **Authorized JavaScript origin:**
 ```
 http://localhost:9222
 ```
 
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image9.png?raw=true)
-5.  After saving, click **Download JSON**. This file will later be
-    uploaded into RAGFlow.
+
+5.  After saving, click **Download JSON**. This file will later be uploaded into RAGFlow.
 
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image10.png?raw=true)
 
@@ -95,11 +99,11 @@ Navigate to the Google API Library:\
 
 Enable the following APIs:
 
-- Google Drive API 
-- Admin SDK API 
-- Google Sheets API 
+- Google Drive API
+- Admin SDK API
+- Google Sheets API
 - Google Docs API
-  
+
 
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image15.png?raw=true)
 
@@ -125,7 +129,7 @@ Enable the following APIs:
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image23.png?raw=true)
 
 5.  Click **Authorize with Google**
-A browser window will appear. 
+A browser window will appear.
 ![placeholder-image](https://github.com/infiniflow/ragflow-docs/blob/040e4acd4c1eac6dc73dc44e934a6518de78d097/images/google_drive/image25.jpeg?raw=true)
 Click: - **Continue** - **Select All → Continue** - Authorization should
 succeed - Select **OK** to add the data source
