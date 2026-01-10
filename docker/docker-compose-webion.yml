@@ -1,4 +1,5 @@
 services:
+  privileged: true
   es01:
     container_name: ragflow-es-01
     profiles:
