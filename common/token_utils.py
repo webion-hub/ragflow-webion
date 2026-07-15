@@ -82,6 +82,76 @@ def total_token_count_from_response(resp):
     return 0
 
 
+def usage_from_response(resp) -> dict:
+    """Extract a {prompt_tokens, completion_tokens, total_tokens} split from an LLM response.
+
+    Handles OpenAI/OpenRouter-style ``resp.usage`` objects and dict variants. Missing
+    fields default to 0; ``total_tokens`` falls back to prompt+completion when absent.
+    (Backported to match upstream RAGFlow >=0.26 so future merges stay clean.)
+    """
+    out = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if resp is None:
+        return out
+
+    usage = None
+    try:
+        usage = getattr(resp, "usage", None)
+        if usage is None and isinstance(resp, dict):
+            usage = resp.get("usage")
+    except Exception:
+        usage = None
+    if usage is None:
+        return out
+
+    def _get(obj, *names):
+        for n in names:
+            try:
+                v = obj.get(n) if isinstance(obj, dict) else getattr(obj, n, None)
+            except Exception:
+                v = None
+            if v:
+                return int(v)
+        return 0
+
+    out["prompt_tokens"] = _get(usage, "prompt_tokens", "input_tokens")
+    out["completion_tokens"] = _get(usage, "completion_tokens", "output_tokens")
+    out["total_tokens"] = _get(usage, "total_tokens")
+    if not out["total_tokens"]:
+        out["total_tokens"] = out["prompt_tokens"] + out["completion_tokens"]
+    return out
+
+
+def cost_from_response(resp) -> float:
+    """Best-effort real USD cost of a completion.
+
+    OpenRouter returns ``usage.cost`` when the request carries ``usage:{include:true}``;
+    LiteLLM may also expose a computed cost via ``_hidden_params.response_cost``.
+    Returns 0.0 when no cost is available.
+    """
+    if resp is None:
+        return 0.0
+
+    try:
+        usage = getattr(resp, "usage", None)
+        if usage is None and isinstance(resp, dict):
+            usage = resp.get("usage")
+        if usage is not None:
+            c = usage.get("cost") if isinstance(usage, dict) else getattr(usage, "cost", None)
+            if c:
+                return float(c)
+    except Exception:
+        pass
+
+    try:
+        hp = getattr(resp, "_hidden_params", None)
+        if isinstance(hp, dict) and hp.get("response_cost"):
+            return float(hp["response_cost"])
+    except Exception:
+        pass
+
+    return 0.0
+
+
 def truncate(string: str, max_len: int) -> str:
     """Returns truncated text if the length of text exceed max_len."""
     return encoder.decode(encoder.encode(string)[:max_len])

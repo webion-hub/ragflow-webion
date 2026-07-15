@@ -397,6 +397,7 @@ class LLMBundle(LLM4Tenant):
             generation.update(output={"output": txt}, usage_details={"total_tokens": used_tokens})
             generation.end()
 
+        self.last_usage = getattr(self.mdl, "last_usage", None)
         return txt
 
     async def async_chat_streamly(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
@@ -440,6 +441,7 @@ class LLMBundle(LLM4Tenant):
             if generation:
                 generation.update(output={"output": ans}, usage_details={"total_tokens": total_tokens})
                 generation.end()
+            self.last_usage = getattr(self.mdl, "last_usage", None)
             return
 
     async def async_chat_streamly_delta(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
@@ -483,4 +485,5 @@ class LLMBundle(LLM4Tenant):
             if generation:
                 generation.update(output={"output": ans}, usage_details={"total_tokens": total_tokens})
                 generation.end()
+            self.last_usage = getattr(self.mdl, "last_usage", None)
             return
