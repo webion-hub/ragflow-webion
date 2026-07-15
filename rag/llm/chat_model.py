@@ -1515,6 +1515,17 @@ class LiteLLMBase(ABC):
 
         total_tokens = 0
         hist = deepcopy(history)
+        # Real usage is aggregated across tool-call rounds; each round's provider
+        # usage arrives on a final chunk (often with empty choices).
+        agg_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        cost_sum = 0.0
+        gen_id = None
+
+        def _commit_round(round_usage):
+            if round_usage and round_usage["total_tokens"]:
+                agg_usage["prompt_tokens"] += round_usage["prompt_tokens"]
+                agg_usage["completion_tokens"] += round_usage["completion_tokens"]
+                agg_usage["total_tokens"] += round_usage["total_tokens"]
 
         for attempt in range(self.max_retries + 1):
             history = deepcopy(hist)
@@ -1532,8 +1543,17 @@ class LiteLLMBase(ABC):
 
                     final_tool_calls = {}
                     answer = ""
+                    round_usage = None
 
                     async for resp in response:
+                        gen_id = gen_id or getattr(resp, "id", None)
+                        _u = usage_from_response(resp)
+                        if _u["total_tokens"]:
+                            round_usage = _u
+                            _c = cost_from_response(resp)
+                            if _c:
+                                cost_sum += _c
+
                         if not hasattr(resp, "choices") or not resp.choices:
                             continue
 
@@ -1565,17 +1585,23 @@ class LiteLLMBase(ABC):
                             answer += delta.content
                             yield delta.content
 
-                        tol = total_token_count_from_response(resp)
-                        if not tol:
-                            total_tokens += num_tokens_from_string(delta.content)
-                        else:
-                            total_tokens = tol
+                        if not _u["total_tokens"]:
+                            tol = total_token_count_from_response(resp)
+                            if not tol:
+                                total_tokens += num_tokens_from_string(delta.content)
+                            else:
+                                total_tokens = tol
 
                         finish_reason = getattr(resp.choices[0], "finish_reason", "")
                         if finish_reason == "length":
                             yield self._length_stop("")
 
+                    _commit_round(round_usage)
+
                     if answer:
+                        if agg_usage["total_tokens"]:
+                            total_tokens = agg_usage["total_tokens"]
+                        self.last_usage = {**agg_usage, "cost": cost_sum, "generation_id": gen_id}
                         yield total_tokens
                         return
 
@@ -1602,19 +1628,32 @@ class LiteLLMBase(ABC):
                     timeout=self.timeout,
                 )
 
+                round_usage = None
                 async for resp in response:
+                    gen_id = gen_id or getattr(resp, "id", None)
+                    _u = usage_from_response(resp)
+                    if _u["total_tokens"]:
+                        round_usage = _u
+                        _c = cost_from_response(resp)
+                        if _c:
+                            cost_sum += _c
                     if not hasattr(resp, "choices") or not resp.choices:
                         continue
                     delta = resp.choices[0].delta
                     if not hasattr(delta, "content") or delta.content is None:
                         continue
-                    tol = total_token_count_from_response(resp)
-                    if not tol:
-                        total_tokens += num_tokens_from_string(delta.content)
-                    else:
-                        total_tokens = tol
+                    if not _u["total_tokens"]:
+                        tol = total_token_count_from_response(resp)
+                        if not tol:
+                            total_tokens += num_tokens_from_string(delta.content)
+                        else:
+                            total_tokens = tol
                     yield delta.content
 
+                _commit_round(round_usage)
+                if agg_usage["total_tokens"]:
+                    total_tokens = agg_usage["total_tokens"]
+                self.last_usage = {**agg_usage, "cost": cost_sum, "generation_id": gen_id}
                 yield total_tokens
                 return
 
