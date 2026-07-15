@@ -522,7 +522,11 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             langfuse_generation.update(output=langfuse_output)
             langfuse_generation.end()
 
-        return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time()}
+        # Real per-request token usage + USD cost captured from the provider
+        # (OpenRouter) on the underlying chat model. Exposed to API consumers so
+        # they can display consumption and estimate costs.
+        usage = getattr(chat_mdl, "last_usage", None)
+        return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time(), "usage": usage}
 
     if langfuse_tracer:
         langfuse_generation = langfuse_tracer.start_generation(

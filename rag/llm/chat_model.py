@@ -30,7 +30,7 @@ import openai
 from openai import AsyncOpenAI, OpenAI
 from strenum import StrEnum
 
-from common.token_utils import num_tokens_from_string, total_token_count_from_response
+from common.token_utils import num_tokens_from_string, total_token_count_from_response, usage_from_response, cost_from_response
 from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, SupportedLiteLLMProvider
 from rag.nlp import is_chinese, is_english
 
@@ -1215,6 +1215,9 @@ class LiteLLMBase(ABC):
         self.is_tools = False
         self.tools = []
         self.toolcall_sessions = {}
+        # Real token usage (prompt/completion/total) + USD cost of the most recent
+        # chat call, captured from the provider response. Consumed by LLMBundle.
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}
 
         # Factory specific fields
         if self.provider == SupportedLiteLLMProvider.OpenRouter:
@@ -1273,6 +1276,9 @@ class LiteLLMBase(ABC):
                     timeout=self.timeout,
                 )
 
+                self.last_usage = usage_from_response(response)
+                self.last_usage["cost"] = cost_from_response(response)
+
                 if any([not response.choices, not response.choices[0].message, not response.choices[0].message.content]):
                     return "", 0
                 ans = response.choices[0].message.content.strip()
@@ -1294,6 +1300,8 @@ class LiteLLMBase(ABC):
         gen_conf = self._clean_conf(gen_conf)
         reasoning_start = False
         total_tokens = 0
+        real_usage = None
+        real_cost = 0.0
 
         completion_args = self._construct_completion_args(history=history, stream=True, tools=False, **gen_conf)
         stop = kwargs.get("stop")
@@ -1309,6 +1317,13 @@ class LiteLLMBase(ABC):
                 )
 
                 async for resp in stream:
+                    # The final usage-bearing chunk (include_usage) often has empty
+                    # choices, so read usage before the choices guard below.
+                    _u = usage_from_response(resp)
+                    if _u["total_tokens"]:
+                        real_usage = _u
+                        real_cost = cost_from_response(resp)
+
                     if not hasattr(resp, "choices") or not resp.choices:
                         continue
 
@@ -1326,10 +1341,10 @@ class LiteLLMBase(ABC):
                         reasoning_start = False
                         ans = delta.content
 
-                    tol = total_token_count_from_response(resp)
-                    if not tol:
-                        tol = num_tokens_from_string(delta.content)
-                    total_tokens += tol
+                    # Fall back to a token estimate only until the provider reports
+                    # real usage; the real total overrides it after the loop.
+                    if not _u["total_tokens"]:
+                        total_tokens += num_tokens_from_string(delta.content)
 
                     finish_reason = resp.choices[0].finish_reason if hasattr(resp.choices[0], "finish_reason") else ""
                     if finish_reason == "length":
@@ -1339,6 +1354,12 @@ class LiteLLMBase(ABC):
                             ans += LENGTH_NOTIFICATION_EN
 
                     yield ans
+
+                if real_usage:
+                    total_tokens = real_usage["total_tokens"]
+                    self.last_usage = {**real_usage, "cost": real_cost}
+                else:
+                    self.last_usage = {"prompt_tokens": 0, "completion_tokens": total_tokens, "total_tokens": total_tokens, "cost": 0.0}
                 yield total_tokens
                 return
             except Exception as e:
@@ -1446,6 +1467,9 @@ class LiteLLMBase(ABC):
                         ans += message.content or ""
                         if response.choices[0].finish_reason == "length":
                             ans = self._length_stop(ans)
+                        self.last_usage = usage_from_response(response)
+                        self.last_usage["total_tokens"] = tk_count or self.last_usage["total_tokens"]
+                        self.last_usage["cost"] = cost_from_response(response)
                         return ans, tk_count
 
                     for tool_call in message.tool_calls:
@@ -1608,6 +1632,9 @@ class LiteLLMBase(ABC):
             completion_args.update(
                 {
                     "stream": stream,
+                    # Ask the provider to emit a final usage-bearing chunk so we can
+                    # record the real prompt/completion token split while streaming.
+                    "stream_options": {"include_usage": True},
                 }
             )
         if tools and self.tools:
@@ -1650,6 +1677,10 @@ class LiteLLMBase(ABC):
                 completion_args.update({"aws_region_name": bedrock_region})
 
         elif self.provider == SupportedLiteLLMProvider.OpenRouter:
+            extra_body = dict(completion_args.get("extra_body") or {})
+            # Ask OpenRouter to return the real generation cost (and accurate token
+            # counts) inside ``usage`` of the response / final stream chunk.
+            extra_body["usage"] = {"include": True}
             if self.provider_order:
 
                 def _to_order_list(x):
@@ -1661,13 +1692,9 @@ class LiteLLMBase(ABC):
                         return [str(s).strip() for s in x if str(s).strip()]
                     return []
 
-                extra_body = {}
-                provider_cfg = {}
                 provider_order = _to_order_list(self.provider_order)
-                provider_cfg["order"] = provider_order
-                provider_cfg["allow_fallbacks"] = False
-                extra_body["provider"] = provider_cfg
-                completion_args.update({"extra_body": extra_body})
+                extra_body["provider"] = {"order": provider_order, "allow_fallbacks": False}
+            completion_args.update({"extra_body": extra_body})
         elif self.provider == SupportedLiteLLMProvider.GPUStack:
             completion_args.update(
                 {
