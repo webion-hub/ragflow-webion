@@ -1215,9 +1215,12 @@ class LiteLLMBase(ABC):
         self.is_tools = False
         self.tools = []
         self.toolcall_sessions = {}
-        # Real token usage (prompt/completion/total) + USD cost of the most recent
-        # chat call, captured from the provider response. Consumed by LLMBundle.
-        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}
+        # Real token usage (prompt/completion/total) + USD cost + provider
+        # generation id of the most recent chat call, captured from the provider
+        # response. Consumed by LLMBundle. ``generation_id`` lets a consumer fetch
+        # the exact cost from OpenRouter's /generation endpoint when the streaming
+        # response doesn't carry it (LiteLLM drops usage.cost while streaming).
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0, "generation_id": None}
 
         # Factory specific fields
         if self.provider == SupportedLiteLLMProvider.OpenRouter:
@@ -1278,6 +1281,7 @@ class LiteLLMBase(ABC):
 
                 self.last_usage = usage_from_response(response)
                 self.last_usage["cost"] = cost_from_response(response)
+                self.last_usage["generation_id"] = getattr(response, "id", None)
 
                 if any([not response.choices, not response.choices[0].message, not response.choices[0].message.content]):
                     return "", 0
@@ -1302,6 +1306,7 @@ class LiteLLMBase(ABC):
         total_tokens = 0
         real_usage = None
         real_cost = 0.0
+        gen_id = None
 
         completion_args = self._construct_completion_args(history=history, stream=True, tools=False, **gen_conf)
         stop = kwargs.get("stop")
@@ -1317,6 +1322,7 @@ class LiteLLMBase(ABC):
                 )
 
                 async for resp in stream:
+                    gen_id = gen_id or getattr(resp, "id", None)
                     # The final usage-bearing chunk (include_usage) often has empty
                     # choices, so read usage before the choices guard below.
                     _u = usage_from_response(resp)
@@ -1357,9 +1363,9 @@ class LiteLLMBase(ABC):
 
                 if real_usage:
                     total_tokens = real_usage["total_tokens"]
-                    self.last_usage = {**real_usage, "cost": real_cost}
+                    self.last_usage = {**real_usage, "cost": real_cost, "generation_id": gen_id}
                 else:
-                    self.last_usage = {"prompt_tokens": 0, "completion_tokens": total_tokens, "total_tokens": total_tokens, "cost": 0.0}
+                    self.last_usage = {"prompt_tokens": 0, "completion_tokens": total_tokens, "total_tokens": total_tokens, "cost": 0.0, "generation_id": gen_id}
                 yield total_tokens
                 return
             except Exception as e:
@@ -1470,6 +1476,7 @@ class LiteLLMBase(ABC):
                         self.last_usage = usage_from_response(response)
                         self.last_usage["total_tokens"] = tk_count or self.last_usage["total_tokens"]
                         self.last_usage["cost"] = cost_from_response(response)
+                        self.last_usage["generation_id"] = getattr(response, "id", None)
                         return ans, tk_count
 
                     for tool_call in message.tool_calls:
@@ -1677,10 +1684,6 @@ class LiteLLMBase(ABC):
                 completion_args.update({"aws_region_name": bedrock_region})
 
         elif self.provider == SupportedLiteLLMProvider.OpenRouter:
-            extra_body = dict(completion_args.get("extra_body") or {})
-            # Ask OpenRouter to return the real generation cost (and accurate token
-            # counts) inside ``usage`` of the response / final stream chunk.
-            extra_body["usage"] = {"include": True}
             if self.provider_order:
 
                 def _to_order_list(x):
@@ -1692,9 +1695,13 @@ class LiteLLMBase(ABC):
                         return [str(s).strip() for s in x if str(s).strip()]
                     return []
 
+                extra_body = {}
+                provider_cfg = {}
                 provider_order = _to_order_list(self.provider_order)
-                extra_body["provider"] = {"order": provider_order, "allow_fallbacks": False}
-            completion_args.update({"extra_body": extra_body})
+                provider_cfg["order"] = provider_order
+                provider_cfg["allow_fallbacks"] = False
+                extra_body["provider"] = provider_cfg
+                completion_args.update({"extra_body": extra_body})
         elif self.provider == SupportedLiteLLMProvider.GPUStack:
             completion_args.update(
                 {
@@ -1711,6 +1718,20 @@ class LiteLLMBase(ABC):
                     "api_version": self.api_version,
                 }
             )
+
+        # OpenRouter is already handled by the FACTORY_DEFAULT_BASE_URL branch above
+        # (it sets api_base), so its extra_body must be applied here, outside the
+        # if/elif chain. Ask OpenRouter to report the real generation cost and
+        # accurate token counts inside `usage` (response + final stream chunk).
+        if self.provider == SupportedLiteLLMProvider.OpenRouter:
+            extra_body = dict(completion_args.get("extra_body") or {})
+            extra_body["usage"] = {"include": True}
+            if self.provider_order:
+                order = self.provider_order
+                if isinstance(order, str):
+                    order = [s.strip() for s in order.split(",") if s.strip()]
+                extra_body["provider"] = {"order": list(order), "allow_fallbacks": False}
+            completion_args["extra_body"] = extra_body
 
         # Ollama deployments commonly sit behind a reverse proxy that enforces
         # Bearer auth. Ensure the Authorization header is set when an API key

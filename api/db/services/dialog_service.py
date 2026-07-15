@@ -203,11 +203,13 @@ async def async_chat_solo(dialog, messages, stream=True):
                 yield {"answer": "", "reference": {}, "audio_binary": None, "prompt": "", "created_at": time.time(), "final": False, **flags}
                 continue
             yield {"answer": value, "reference": {}, "audio_binary": tts(tts_mdl, value), "prompt": "", "created_at": time.time(), "final": False}
+        # Final message carrying real token usage + cost for this request.
+        yield {"answer": "", "reference": {}, "audio_binary": None, "prompt": "", "created_at": time.time(), "final": True, "usage": getattr(chat_mdl, "last_usage", None)}
     else:
         answer = await chat_mdl.async_chat(prompt_config.get("system", ""), msg, dialog.llm_setting)
         user_content = msg[-1].get("content", "[content not available]")
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
-        yield {"answer": answer, "reference": {}, "audio_binary": tts(tts_mdl, answer), "prompt": "", "created_at": time.time()}
+        yield {"answer": answer, "reference": {}, "audio_binary": tts(tts_mdl, answer), "prompt": "", "created_at": time.time(), "usage": getattr(chat_mdl, "last_usage", None)}
 
 
 def get_models(dialog):
