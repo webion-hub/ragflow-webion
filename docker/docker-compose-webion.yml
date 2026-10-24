@@ -1,6 +1,5 @@
 services:
   es01:
-    privileged: true
     container_name: ragflow-es-01
     profiles:
       - elasticsearch
@@ -33,11 +32,10 @@ services:
     restart: on-failure
 
   opensearch01:
-    privileged: true
     container_name: ragflow-opensearch-01
     profiles:
       - opensearch
-    image: hub.icert.top/opensearchproject/opensearch:2.19.1
+    image: opensearchproject/opensearch:2.19.1
     volumes:
       - osdata01:/usr/share/opensearch/data
     environment:
@@ -67,7 +65,6 @@ services:
     restart: on-failure
 
   infinity:
-    privileged: true
     container_name: ragflow-infinity
     profiles:
       - infinity
@@ -118,7 +115,6 @@ services:
     restart: on-failure
 
   mysql:
-    privileged: true
     # mysql:5.7 linux/arm64 image is unavailable.
     image: mysql:8.0.39
     container_name: ragflow-mysql
@@ -145,7 +141,6 @@ services:
     restart: on-failure
 
   minio:
-    privileged: true
     image: quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z
     container_name: ragflow-minio
     command: server --console-address ":9001" /data
@@ -164,7 +159,6 @@ services:
       retries: 3
 
   redis:
-    privileged: true
     # swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/valkey/valkey:8
     image: valkey/valkey:8
     container_name: ragflow-redis
@@ -215,7 +209,6 @@ services:
       - HF_ENDPOINT=${HF_ENDPOINT-}
       - MACOS=${MACOS-}
     restart: on-failure
-    privileged: true
 
 volumes:
   esdata01:
