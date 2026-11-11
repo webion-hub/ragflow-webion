@@ -31,7 +31,7 @@ from openai import AsyncOpenAI, OpenAI
 from strenum import StrEnum
 
 from common.openai_models import apply_reasoning_effort, register_litellm_prices
-from common.token_utils import num_tokens_from_string, total_token_count_from_response, usage_from_response, cost_from_response
+from common.token_utils import num_tokens_from_string, total_token_count_from_response, usage_from_response, cost_from_response, cost_from_usage
 from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, SupportedLiteLLMProvider
 
 register_litellm_prices()
@@ -1262,6 +1262,13 @@ class LiteLLMBase(ABC):
             del gen_conf["max_tokens"]
         return gen_conf
 
+    def _cost(self, resp):
+        # OpenAI reports no cost itself, and LiteLLM's response_cost is wrong for it
+        # (0 while streaming, reasoning-only billing), so price the reported tokens.
+        if self.provider == SupportedLiteLLMProvider.OpenAI:
+            return cost_from_usage(self.model_name, resp)
+        return cost_from_response(resp)
+
     async def async_chat(self, system, history, gen_conf, **kwargs):
         hist = list(history) if history else []
         if system:
@@ -1283,7 +1290,7 @@ class LiteLLMBase(ABC):
                 )
 
                 self.last_usage = usage_from_response(response)
-                self.last_usage["cost"] = cost_from_response(response)
+                self.last_usage["cost"] = self._cost(response)
                 self.last_usage["generation_id"] = getattr(response, "id", None)
 
                 if any([not response.choices, not response.choices[0].message, not response.choices[0].message.content]):
@@ -1331,7 +1338,7 @@ class LiteLLMBase(ABC):
                     _u = usage_from_response(resp)
                     if _u["total_tokens"]:
                         real_usage = _u
-                        real_cost = cost_from_response(resp)
+                        real_cost = self._cost(resp)
 
                     if not hasattr(resp, "choices") or not resp.choices:
                         continue
@@ -1478,7 +1485,7 @@ class LiteLLMBase(ABC):
                             ans = self._length_stop(ans)
                         self.last_usage = usage_from_response(response)
                         self.last_usage["total_tokens"] = tk_count or self.last_usage["total_tokens"]
-                        self.last_usage["cost"] = cost_from_response(response)
+                        self.last_usage["cost"] = self._cost(response)
                         self.last_usage["generation_id"] = getattr(response, "id", None)
                         return ans, tk_count
 
@@ -1553,7 +1560,7 @@ class LiteLLMBase(ABC):
                         _u = usage_from_response(resp)
                         if _u["total_tokens"]:
                             round_usage = _u
-                            _c = cost_from_response(resp)
+                            _c = self._cost(resp)
                             if _c:
                                 cost_sum += _c
 
@@ -1637,7 +1644,7 @@ class LiteLLMBase(ABC):
                     _u = usage_from_response(resp)
                     if _u["total_tokens"]:
                         round_usage = _u
-                        _c = cost_from_response(resp)
+                        _c = self._cost(resp)
                         if _c:
                             cost_sum += _c
                     if not hasattr(resp, "choices") or not resp.choices:
