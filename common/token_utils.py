@@ -152,6 +152,43 @@ def cost_from_response(resp) -> float:
     return 0.0
 
 
+def cost_from_usage(model: str, resp) -> float:
+    """USD cost from the token counts the provider reported and LiteLLM's price table.
+
+    For OpenAI, LiteLLM's own ``response_cost`` cannot be trusted: it is missing on
+    streamed chunks (so the cost is 0), and LiteLLM 1.80.x bills only the reasoning
+    tokens whenever ``completion_tokens_details.reasoning_tokens`` is reported.
+    Long-context surcharges are not applied. Returns 0.0 when the model has no price.
+    """
+    try:
+        usage = getattr(resp, "usage", None)
+        if usage is None and isinstance(resp, dict):
+            usage = resp.get("usage")
+        if not usage:
+            return 0.0
+        tokens = usage_from_response(resp)
+        if not tokens["total_tokens"]:
+            return 0.0
+
+        details = usage.get("prompt_tokens_details") if isinstance(usage, dict) else getattr(usage, "prompt_tokens_details", None)
+        cached = 0
+        if details:
+            cached = int((details.get("cached_tokens") if isinstance(details, dict) else getattr(details, "cached_tokens", 0)) or 0)
+
+        import litellm
+
+        # Look the price up directly: get_model_info logs an error banner for unmapped models.
+        info = litellm.model_cost.get(model) or litellm.model_cost.get(model.split("/", 1)[-1]) or {}
+        input_price = info.get("input_cost_per_token") or 0.0
+        cached_price = info.get("cache_read_input_token_cost") or input_price
+        output_price = info.get("output_cost_per_token") or 0.0
+        if not (input_price or output_price):
+            return 0.0
+        return (tokens["prompt_tokens"] - cached) * input_price + cached * cached_price + tokens["completion_tokens"] * output_price
+    except Exception:
+        return 0.0
+
+
 def truncate(string: str, max_len: int) -> str:
     """Returns truncated text if the length of text exceed max_len."""
     return encoder.decode(encoder.encode(string)[:max_len])
