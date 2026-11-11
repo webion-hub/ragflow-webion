@@ -86,7 +86,7 @@ def register_litellm_prices() -> None:
 
     litellm.register_model(
         {
-            name: {
+            f"openai/{name}": {
                 "litellm_provider": "openai",
                 "mode": "chat",
                 "input_cost_per_token": inp / 1e6,
