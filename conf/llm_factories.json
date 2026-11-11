@@ -8,6 +8,34 @@
             "rank": "999",
             "llm": [
                 {
+                    "llm_name": "gpt-6-astra",
+                    "tags": "LLM,CHAT,1M,IMAGE2TEXT",
+                    "max_tokens": 1050000,
+                    "model_type": "chat",
+                    "is_tools": false
+                },
+                {
+                    "llm_name": "gpt-6.1-sol",
+                    "tags": "LLM,CHAT,1M,IMAGE2TEXT",
+                    "max_tokens": 1050000,
+                    "model_type": "chat",
+                    "is_tools": false
+                },
+                {
+                    "llm_name": "gpt-6.1-terra",
+                    "tags": "LLM,CHAT,1M,IMAGE2TEXT",
+                    "max_tokens": 1050000,
+                    "model_type": "chat",
+                    "is_tools": false
+                },
+                {
+                    "llm_name": "gpt-6-luna",
+                    "tags": "LLM,CHAT,1M,IMAGE2TEXT",
+                    "max_tokens": 1050000,
+                    "model_type": "chat",
+                    "is_tools": false
+                },
+                {
                     "llm_name": "gpt-5.2-pro",
                     "tags": "LLM,CHAT,400k,IMAGE2TEXT",
                     "max_tokens": 400000,

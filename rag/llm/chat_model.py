@@ -30,8 +30,11 @@ import openai
 from openai import AsyncOpenAI, OpenAI
 from strenum import StrEnum
 
+from common.openai_models import apply_reasoning_effort, register_litellm_prices
 from common.token_utils import num_tokens_from_string, total_token_count_from_response, usage_from_response, cost_from_response
 from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, SupportedLiteLLMProvider
+
+register_litellm_prices()
 from rag.nlp import is_chinese, is_english
 
 
@@ -1780,4 +1783,7 @@ class LiteLLMBase(ABC):
             extra_headers["Authorization"] = f"Bearer {self.api_key}"
         if extra_headers:
             completion_args["extra_headers"] = extra_headers
+
+        if self.provider == SupportedLiteLLMProvider.OpenAI:
+            completion_args = apply_reasoning_effort(self.model_name, completion_args)
         return completion_args

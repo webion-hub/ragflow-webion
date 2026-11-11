@@ -139,9 +139,42 @@ def init_llm_factory():
             except Exception:
                 pass
             break
+    add_new_openai_models_to_tenants(tenant_ids)
     doc_count = DocumentService.get_all_kb_doc_count()
     for kb_id in KnowledgebaseService.get_all_ids():
         KnowledgebaseService.update_document_number_in_init(kb_id=kb_id, doc_num=doc_count.get(kb_id, 0))
+
+
+def add_new_openai_models_to_tenants(tenant_ids):
+    """Give tenants that already have an OpenAI key the models added to the catalog since.
+
+    Tenant model rows are otherwise only created when the API key is saved again
+    in the UI, so new catalog models would stay invisible after an upgrade.
+    """
+    catalog = LLMService.query(fid="OpenAI")
+    for tid in tenant_ids:
+        rows = [r.to_dict() for r in TenantLLMService.query(llm_factory="OpenAI", tenant_id=tid)]
+        template = next((r for r in rows if r.get("api_key")), None)
+        if not template:
+            continue
+        existing = {r["llm_name"] for r in rows}
+        for llm in catalog:
+            if llm.llm_name in existing:
+                continue
+            try:
+                TenantLLMService.save(
+                    tenant_id=tid,
+                    llm_factory="OpenAI",
+                    llm_name=llm.llm_name,
+                    model_type=llm.model_type,
+                    api_key=template["api_key"],
+                    api_base=template.get("api_base") or "",
+                    max_tokens=llm.max_tokens,
+                    used_tokens=0,
+                )
+                logging.info(f"Added OpenAI model {llm.llm_name} to tenant {tid}")
+            except Exception:
+                logging.exception(f"Failed to add OpenAI model {llm.llm_name} to tenant {tid}")
 
 
 
