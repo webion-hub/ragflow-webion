@@ -31,6 +31,7 @@ import requests
 from openai import OpenAI, AsyncOpenAI
 from openai.lib.azure import AzureOpenAI, AsyncAzureOpenAI
 
+from common.openai_models import reasoning_effort
 from common.token_utils import num_tokens_from_string, total_token_count_from_response
 from rag.nlp import is_english
 from rag.prompts.generator import vision_llm_describe_prompt
@@ -195,6 +196,10 @@ class GptV4(Base):
         self.model_name = model_name
         self.lang = lang
         super().__init__(**kwargs)
+        # Subclasses reuse this class for other providers; only OpenAI models get an effort.
+        effort = reasoning_effort(model_name) if self._FACTORY_NAME == "OpenAI" else None
+        if effort:
+            self.extra_body = {"reasoning_effort": effort}
 
     def describe(self, image):
         b64 = self.image2base64(image)
